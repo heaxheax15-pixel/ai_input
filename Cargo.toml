@@ -1,0 +1,25 @@
+[workspace]
+members = [
+    "crates/ai-bridge-channels",
+    "crates/ai-bridge-protocol",
+    "crates/ai-bridge-gatekeeper",
+    "crates/ai-bridge-hand-eye",
+    "crates/ai-bridge-subchat",
+    "crates/ai-bridge-selfheal",
+]
+resolver = "2"
+
+[package]
+name = "ai-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ai-bridge-channels = { path = "crates/ai-bridge-channels" }
+ai-bridge-gatekeeper = { path = "crates/ai-bridge-gatekeeper" }
+ai-bridge-hand-eye = { path = "crates/ai-bridge-hand-eye" }
+ai-bridge-protocol = { path = "crates/ai-bridge-protocol" }
+ai-bridge-selfheal = { path = "crates/ai-bridge-selfheal" }
+ai-bridge-subchat = { path = "crates/ai-bridge-subchat" }
+anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }

@@ -1,0 +1,11 @@
+[package]
+name = "ai-bridge-hand-eye"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ai-bridge-gatekeeper = { path = "../ai-bridge-gatekeeper" }
+ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+zbus = "5.0"

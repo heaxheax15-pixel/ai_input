@@ -1,0 +1,8 @@
+/home/heax/ai_input/target/release/deps/async_signal-17e1f075916d3419.d: /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/lib.rs /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/pipe.rs
+
+/home/heax/ai_input/target/release/deps/libasync_signal-17e1f075916d3419.rlib: /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/lib.rs /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/pipe.rs
+
+/home/heax/ai_input/target/release/deps/libasync_signal-17e1f075916d3419.rmeta: /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/lib.rs /home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/pipe.rs
+
+/home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/lib.rs:
+/home/heax/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-signal-0.2.14/src/pipe.rs:

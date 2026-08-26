@@ -1,0 +1,11 @@
+[[apps]]
+app_id = "org.mozilla.firefox"
+allowed = true
+
+[[apps]]
+app_id = "org.gnome.Nautilus"
+allowed = true
+
+[[apps]]
+app_id = "org.gnome.Terminal"
+allowed = false

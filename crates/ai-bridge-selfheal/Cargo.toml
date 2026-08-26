@@ -1,0 +1,9 @@
+[package]
+name = "ai-bridge-selfheal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+thiserror = "2.0"
+tokio = { version = "1", features = ["rt", "time", "macros"] }

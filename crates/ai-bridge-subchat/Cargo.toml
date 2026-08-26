@@ -1,0 +1,10 @@
+[package]
+name = "ai-bridge-subchat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ai-bridge-channels = { path = "../ai-bridge-channels" }
+ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
