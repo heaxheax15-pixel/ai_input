@@ -3,12 +3,11 @@ use std::sync::Arc;
 use std::io::Read;
 
 use anyhow::{Context, Result};
-use ai_bridge::config::{default_runtime_config, SYNC_TIMEOUT};
-use ai_bridge::root_branch::resolve_delivery;
+use ai_bridge::config::default_runtime_config;
 use ai_bridge_channels::{ChannelManager, ChannelName, ChannelError};
 use ai_bridge_gatekeeper::policy::decide_policy;
 use ai_bridge_hand_eye::allowlist::Allowlist;
-use ai_bridge_protocol::{ExecutionPlan, SubChatResult};
+use ai_bridge_protocol::ExecutionPlan;
 
 #[tokio::main]
 async fn main() -> Result<()> {
