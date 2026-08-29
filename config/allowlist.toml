@@ -8,4 +8,4 @@ allowed = true
 
 [[apps]]
 app_id = "org.gnome.Terminal"
-allowed = false
+allowed = true

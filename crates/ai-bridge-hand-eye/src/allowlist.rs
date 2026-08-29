@@ -22,7 +22,8 @@ pub struct Allowlist {
 impl Allowlist {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
         let raw = fs::read_to_string(path)?;
-        let config: AllowlistConfig = toml::from_str(&raw).map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        let config: AllowlistConfig = toml::from_str(&raw)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
         Ok(Self { apps: config.apps })
     }
 
@@ -33,7 +34,8 @@ impl Allowlist {
     }
 
     pub fn from_toml(raw: &str) -> Result<Self, std::io::Error> {
-        let config: AllowlistConfig = toml::from_str(raw).map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        let config: AllowlistConfig = toml::from_str(raw)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
         Ok(Self { apps: config.apps })
     }
 

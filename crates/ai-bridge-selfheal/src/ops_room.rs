@@ -43,7 +43,10 @@ pub fn self_heal_mode(message: &str, elapsed: Duration) -> SelfHealState {
     }
 }
 
-pub fn role_swap_on_failure(maestro_offline: bool, current_maestro: BranchRole) -> RoleSwapDirective {
+pub fn role_swap_on_failure(
+    maestro_offline: bool,
+    current_maestro: BranchRole,
+) -> RoleSwapDirective {
     if maestro_offline {
         let active_maestro = match current_maestro {
             BranchRole::Maestro | BranchRole::BranchA => BranchRole::BranchA,

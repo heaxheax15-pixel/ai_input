@@ -132,8 +132,14 @@ mod tests {
             task_id: "task-9".to_string(),
             result: "branch-a complete".to_string(),
             status: "success".to_string(),
+            call_index: 0,
         };
-        let decision = resolve_delivery(result_a.clone(), None, Duration::from_secs(241), Duration::from_secs(240));
+        let decision = resolve_delivery(
+            result_a.clone(),
+            None,
+            Duration::from_secs(241),
+            Duration::from_secs(240),
+        );
         assert!(matches!(decision, DeliveryDecision::PartialDelivery { .. }));
     }
 
@@ -143,13 +149,20 @@ mod tests {
             task_id: "task-9".to_string(),
             result: "branch-a complete".to_string(),
             status: "success".to_string(),
+            call_index: 0,
         };
         let result_b = SubChatResult {
             task_id: "task-9".to_string(),
             result: "branch-b complete".to_string(),
             status: "success".to_string(),
+            call_index: 1,
         };
-        let decision = resolve_delivery(result_a, Some(result_b), Duration::from_secs(120), Duration::from_secs(240));
+        let decision = resolve_delivery(
+            result_a,
+            Some(result_b),
+            Duration::from_secs(120),
+            Duration::from_secs(240),
+        );
         assert!(matches!(decision, DeliveryDecision::FullDelivery { .. }));
     }
 }

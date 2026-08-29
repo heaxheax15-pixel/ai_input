@@ -6,6 +6,8 @@ members = [
     "crates/ai-bridge-hand-eye",
     "crates/ai-bridge-subchat",
     "crates/ai-bridge-selfheal",
+    "crates/ai-bridge-desktop-io",
+    "crates/ai-bridge-ui",
 ]
 resolver = "2"
 
@@ -22,4 +24,6 @@ ai-bridge-protocol = { path = "crates/ai-bridge-protocol" }
 ai-bridge-selfheal = { path = "crates/ai-bridge-selfheal" }
 ai-bridge-subchat = { path = "crates/ai-bridge-subchat" }
 anyhow = "1.0"
+serde_json = "1.0"
+thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }

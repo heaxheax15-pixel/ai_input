@@ -38,13 +38,10 @@ impl OrphanWorker {
 
         let query = ContextQuery {
             task_id: "orphan-task".to_string(),
-            query: self.context.clone(),
-            limit: 1,
         };
         let response = ContextResponse {
             task_id: "orphan-task".to_string(),
-            context: vec![self.context.clone()],
-            status: "ready".to_string(),
+            include_master_context: false,
         };
 
         let _ = (&query, &response);
@@ -53,10 +50,14 @@ impl OrphanWorker {
             task_id: "orphan-task".to_string(),
             result: self.context.clone(),
             status: "success".to_string(),
+            call_index: 0,
         })
     }
 
-    pub fn request_sub_chat(&self, _request: &SubChatOpenRequest) -> Result<SubChatResult, OrphanError> {
+    pub fn request_sub_chat(
+        &self,
+        _request: &SubChatOpenRequest,
+    ) -> Result<SubChatResult, OrphanError> {
         Err(OrphanError::SubChatNotAllowed)
     }
 }
@@ -77,6 +78,9 @@ mod tests {
             prompt: "nested".to_string(),
             branch: "new_a1".to_string(),
         };
-        assert!(matches!(worker.request_sub_chat(&request), Err(OrphanError::SubChatNotAllowed)));
+        assert!(matches!(
+            worker.request_sub_chat(&request),
+            Err(OrphanError::SubChatNotAllowed)
+        ));
     }
 }

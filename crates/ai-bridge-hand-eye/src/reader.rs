@@ -40,7 +40,13 @@ mod tests {
 
     #[test]
     fn accepts_allowed_file_extensions() {
-        let path = std::env::temp_dir().join(format!("ai_bridge_eye_{}.png", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "ai_bridge_eye_{}.png",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         fs::write(&path, [137, 80, 78, 71]).unwrap();
         assert!(read_allowed_file(&path).is_ok());
         fs::remove_file(&path).unwrap();
@@ -48,9 +54,18 @@ mod tests {
 
     #[test]
     fn rejects_forbidden_file_extensions() {
-        let path = std::env::temp_dir().join(format!("ai_bridge_eye_{}.txt", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "ai_bridge_eye_{}.txt",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         fs::write(&path, b"not allowed").unwrap();
-        assert!(matches!(read_allowed_file(&path), Err(FileReadError::UnsupportedExtension)));
+        assert!(matches!(
+            read_allowed_file(&path),
+            Err(FileReadError::UnsupportedExtension)
+        ));
         fs::remove_file(&path).unwrap();
     }
 }

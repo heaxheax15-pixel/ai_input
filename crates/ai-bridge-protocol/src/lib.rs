@@ -10,15 +10,12 @@ pub struct SubChatOpenRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextQuery {
     pub task_id: String,
-    pub query: String,
-    pub limit: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextResponse {
     pub task_id: String,
-    pub context: Vec<String>,
-    pub status: String,
+    pub include_master_context: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +23,7 @@ pub struct SubChatResult {
     pub task_id: String,
     pub result: String,
     pub status: String,
+    pub call_index: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,15 +72,13 @@ mod tests {
     fn serializes_and_deserializes_context_query() {
         let original = ContextQuery {
             task_id: "task-42".to_string(),
-            query: "Find relevant files".to_string(),
-            limit: 5,
         };
 
         let raw = serialize(&original).unwrap();
         let decoded: ContextQuery = deserialize(&raw).unwrap();
 
         assert_eq!(decoded, original);
-        assert!(raw.contains("\"limit\":5"));
+        assert!(raw.contains("\"task_id\":\"task-42\""));
         assert!(!raw.contains("sender"));
         assert!(!raw.contains("auth_token"));
     }
@@ -91,15 +87,14 @@ mod tests {
     fn serializes_and_deserializes_context_response() {
         let original = ContextResponse {
             task_id: "task-42".to_string(),
-            context: vec!["file1.rs".to_string(), "file2.rs".to_string()],
-            status: "ok".to_string(),
+            include_master_context: true,
         };
 
         let raw = serialize(&original).unwrap();
         let decoded: ContextResponse = deserialize(&raw).unwrap();
 
         assert_eq!(decoded, original);
-        assert!(raw.contains("\"context\":[\"file1.rs\",\"file2.rs\"]"));
+        assert!(raw.contains("\"include_master_context\":true"));
         assert!(!raw.contains("sender"));
         assert!(!raw.contains("auth_token"));
     }
@@ -110,6 +105,7 @@ mod tests {
             task_id: "task-42".to_string(),
             result: "Completed successfully".to_string(),
             status: "success".to_string(),
+            call_index: 0,
         };
 
         let raw = serialize(&original).unwrap();
@@ -117,6 +113,7 @@ mod tests {
 
         assert_eq!(decoded, original);
         assert!(raw.contains("\"status\":\"success\""));
+        assert!(raw.contains("\"call_index\":0"));
         assert!(!raw.contains("sender"));
         assert!(!raw.contains("auth_token"));
     }
@@ -126,7 +123,10 @@ mod tests {
         let original = ExecutionPlan {
             task_id: "task-42".to_string(),
             description: "Run the test suite".to_string(),
-            commands: vec!["cargo test".to_string(), "cargo clippy --all-targets".to_string()],
+            commands: vec![
+                "cargo test".to_string(),
+                "cargo clippy --all-targets".to_string(),
+            ],
         };
 
         let raw = serialize(&original).unwrap();

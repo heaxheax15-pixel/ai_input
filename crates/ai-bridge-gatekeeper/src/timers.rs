@@ -21,7 +21,12 @@ pub fn evaluate_timeout(is_delegable: bool, elapsed: Duration) -> TimerOutcome {
     }
 }
 
-pub fn with_timeout<F>(is_delegable: bool, deadline: Instant, now: Instant, _action: F) -> TimerOutcome
+pub fn with_timeout<F>(
+    is_delegable: bool,
+    deadline: Instant,
+    now: Instant,
+    _action: F,
+) -> TimerOutcome
 where
     F: FnOnce(),
 {

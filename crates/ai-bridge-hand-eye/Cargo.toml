@@ -3,9 +3,15 @@ name = "ai-bridge-hand-eye"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+real-portal = ["dep:ashpd", "dep:tokio", "ashpd/tokio", "ashpd/screencast", "ashpd/remote_desktop"]
+
 [dependencies]
 ai-bridge-gatekeeper = { path = "../ai-bridge-gatekeeper" }
 ai-bridge-protocol = { path = "../ai-bridge-protocol" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 zbus = "5.0"
+ashpd = { version = "0.13", default-features = false, optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
