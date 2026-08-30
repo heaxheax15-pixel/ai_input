@@ -1,0 +1,11 @@
+[[roles]]
+app_id = "org.gnome.Terminal"
+role = "maestro"
+
+[[roles]]
+app_id = "org.mozilla.firefox"
+role = "branch_a"
+
+[[roles]]
+app_id = "org.gnome.Nautilus"
+role = "branch_b"

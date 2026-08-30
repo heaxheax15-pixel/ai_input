@@ -9,6 +9,7 @@ real-portal = ["dep:ashpd", "dep:tokio", "ashpd/tokio", "ashpd/screencast", "ash
 
 [dependencies]
 ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+arboard = { version = "3.6", features = ["image-data"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 zbus = "5.0"

@@ -1,5 +1,7 @@
 use eframe::egui;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
@@ -40,6 +42,26 @@ pub enum UiEvent {
     Gatekeeper(GatekeeperEvent),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchRole {
+    None,
+    Maestro,
+    BranchA,
+    BranchB,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleAssignment {
+    pub app_id: String,
+    pub role: BranchRole,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleAssignmentSet {
+    pub roles: Vec<RoleAssignment>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum OutboundEvent {
@@ -65,10 +87,14 @@ pub struct DashboardApp {
     system_prompt: String,
     include_context: bool,
     priority: String,
+    role_assignments: RoleAssignmentSet,
+    send_message: String,
+    ui_message: String,
 }
 
 impl DashboardApp {
     pub fn new(rx: Receiver<UiEvent>, tx_out: UnboundedSender<OutboundEvent>) -> Self {
+        let role_assignments = RoleAssignmentSet::load_default().unwrap_or_default();
         Self {
             rx,
             tx_out,
@@ -82,7 +108,91 @@ impl DashboardApp {
             system_prompt: "You are Maestro...".to_string(),
             include_context: false,
             priority: "Maestro -> A -> B".to_string(),
+            role_assignments,
+            send_message: String::new(),
+            ui_message: String::new(),
         }
+    }
+
+    fn role_options_for_app(&self, app_id: &str) -> BranchRole {
+        self.role_assignments
+            .roles
+            .iter()
+            .find(|entry| entry.app_id == app_id)
+            .map(|entry| entry.role)
+            .unwrap_or(BranchRole::None)
+    }
+
+    fn set_role_for_app(&mut self, app_id: String, role: BranchRole) {
+        let message = app_id.clone();
+        self.role_assignments.set_role(app_id, role);
+        if let Err(err) = self.role_assignments.save_default() {
+            self.ui_message = format!("Role update failed to save: {err}");
+        } else {
+            self.ui_message = format!("Role updated: {message} -> {:?}", role);
+        }
+    }
+
+    fn render_role_assignment_panel(&mut self, ui: &mut egui::Ui) {
+        pipe_frame(ui, "ROLE ASSIGNMENT", true, |ui| {
+            let app_ids = [
+                "org.gnome.Terminal",
+                "org.mozilla.firefox",
+                "org.gnome.Nautilus",
+            ];
+
+            for app_id in app_ids {
+                let current_role = self.role_options_for_app(app_id);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("{app_id}:"));
+                    for candidate in [
+                        (BranchRole::None, "None"),
+                        (BranchRole::Maestro, "Maestro"),
+                        (BranchRole::BranchA, "Branch A"),
+                        (BranchRole::BranchB, "Branch B"),
+                    ] {
+                        let is_selected = current_role == candidate.0;
+                        if ui
+                            .selectable_label(is_selected, candidate.1)
+                            .clicked()
+                        {
+                            self.set_role_for_app(app_id.to_string(), candidate.0);
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+            }
+
+            if let Some(maestro) = self.role_assignments.current_maestro() {
+                ui.label(format!("Current Maestro: {}", maestro.app_id));
+            } else {
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "No Maestro is currently assigned; select one before sending.",
+                );
+            }
+
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Send message:");
+                ui.text_edit_singleline(&mut self.send_message);
+                if ui.button("Send").clicked() {
+                    match self.role_assignments.current_maestro() {
+                        Some(_) => {
+                            self.ui_message = format!("Message sent as Maestro: {}", self.send_message);
+                            self.send_message.clear();
+                        }
+                        None => {
+                            self.ui_message = "No Maestro is currently assigned. Assign a Maestro before sending.".to_string();
+                        }
+                    }
+                }
+            });
+
+            if !self.ui_message.is_empty() {
+                ui.colored_label(egui::Color32::from_rgb(135, 206, 250), &self.ui_message);
+            }
+        });
     }
 
     fn render_control_center(&mut self, ui: &mut egui::Ui) {
@@ -242,6 +352,9 @@ impl DashboardApp {
                 "Maestro -> B -> A",
             );
         });
+
+        ui.add_space(12.0);
+        self.render_role_assignment_panel(ui);
     }
 }
 
@@ -274,6 +387,81 @@ fn pipe_frame(
             ui.add_space(6.0);
             add_contents(ui);
         });
+}
+
+impl RoleAssignmentSet {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
+        let raw = fs::read_to_string(path)?;
+        toml::from_str(&raw).map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+    }
+
+    pub fn load_default() -> Result<Self, std::io::Error> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let candidate_paths = [
+            root.join("config/roles.toml"),
+            PathBuf::from("config/roles.toml"),
+            PathBuf::from("../config/roles.toml"),
+        ];
+        if let Some(path) = candidate_paths.into_iter().find(|path| path.exists()) {
+            return Self::load(path);
+        }
+        Ok(Self::default())
+    }
+
+    pub fn save_default(&self) -> Result<(), std::io::Error> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let path = root.join("config/roles.toml");
+        let raw = toml::to_string(self)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
+        fs::write(path, raw)
+    }
+
+    pub fn set_role(&mut self, app_id: String, role: BranchRole) {
+        if role == BranchRole::None {
+            self.roles.retain(|entry| entry.app_id != app_id);
+            return;
+        }
+
+        self.roles.retain(|entry| entry.app_id != app_id);
+        self.roles.push(RoleAssignment { app_id, role });
+    }
+
+    pub fn current_maestro(&self) -> Option<&RoleAssignment> {
+        self.roles.iter().find(|entry| entry.role == BranchRole::Maestro)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_assignments_round_trip_through_toml() {
+        let expected = RoleAssignmentSet {
+            roles: vec![
+                RoleAssignment { app_id: "org.gnome.Terminal".into(), role: BranchRole::Maestro },
+                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
+            ],
+        };
+
+        let raw = toml::to_string(&expected).unwrap();
+        let loaded: RoleAssignmentSet = toml::from_str(&raw).unwrap();
+        assert_eq!(loaded.roles, expected.roles);
+    }
+
+    #[test]
+    fn no_maestro_is_detected_when_missing() {
+        let assignments = RoleAssignmentSet {
+            roles: vec![
+                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
+                RoleAssignment { app_id: "org.gnome.Nautilus".into(), role: BranchRole::BranchB },
+            ],
+        };
+
+        let current = assignments.current_maestro();
+        assert!(current.is_none());
+    }
 }
 
 impl eframe::App for DashboardApp {

@@ -1,5 +1,32 @@
 # ai-bridge — سجل التقدم (PROGRESS.md)
 
+## تحقق إلزامي قبل التنفيذ (القسم 0)
+
+**تاريخ التحقق**: 2026-08-30
+
+### 0.1 — وجود `RoleAssignment` وصندوق الإرسال في `ai-bridge-ui`
+- فحص شامل للرمز الحالي في [crates/ai-bridge-ui/src/app.rs](crates/ai-bridge-ui/src/app.rs) و [crates/ai-bridge-ui/src/main.rs](crates/ai-bridge-ui/src/main.rs) وكذلك عبر workspace search عن `RoleAssignment|Role Assignment|SendBox|send_box|clipboard`.
+- النتيجة: لا يوجد أي `RoleAssignment` ولا أي صندوق إرسال/واجهة نقل صورة داخل `ai-bridge-ui` في الكود الحالي.
+- العواقبة: هذا القيد يوقف التنفيذ المباشر للأقسام 1-3 لأن المكوّنات المطلوبة غير موجودة في قاعدة الشفرة الحالية.
+
+### 0.2 — دعم `ashpd` لاستمرارية الجلسة (`persist_mode`/`restore_token`)
+- التحقق من `ashpd` المستخدم في [crates/ai-bridge-hand-eye/Cargo.toml](crates/ai-bridge-hand-eye/Cargo.toml): الإصدار `0.13` مع `ashpd/screencast` و `ashpd/remote_desktop`.
+- في الكود الحالي في [crates/ai-bridge-hand-eye/src/portal.rs](crates/ai-bridge-hand-eye/src/portal.rs) يتم استدعاء `SelectSourcesOptions::default().set_persist_mode(PersistMode::DoNot)`, وهي قيمة صريحة منطقياً تعني "عدم الاستمرار/عدم الاحتفاظ"، وليس مساراً رسميّاً لـ `restore_token`.
+- لا توجد أي إشارة إلى `restore_token` أو تدفق استعادة الجلسة في هذا المشروع.
+- العواقبة: التقاط تلقائي بلا إنسان حاضر غير ممكن حاليّاً دون شاشة اختيار المصدر في كل مرة؛ هذا قيد تصميمي صريح.
+
+### 0.3 — قدرة كتابة صورة إلى حافظة النظام
+- فحص شامل للتبعيات والرمز: لا توجد في المشروع أي اعتماد على `arboard`/`rfd`/`copypasta`/`x11-clipboard` أو أي `write_image`/`Clipboard` path.
+- ملف [crates/ai-bridge-ui/Cargo.toml](crates/ai-bridge-ui/Cargo.toml) يضم فقط `eframe`, `egui`, `tokio`, `serde`, `toml`.
+- لا يوجد رمز في المشروع يكتب مباشرة إلى نظام الحافظة أو ينشئ صورة قابلة للضغط على الحافظة.
+- البديل المتاح فعليّاً: حفظ الصورة كملف محلي ثم إرفاقها يدويّاً / أو استخدام مسار الإدخال اليدوي داخل تطبيق/واجهة المستخدم؛ لا يوجد "لصق تلقائي جاهز" من هذه التبعيات الحالية.
+
+### النتيجة المنطقية
+- لا يمكن تنفيذ التقاط تلقائي دون تدخل بشري اليوم في هذه قاعدة الشفرة الحالية.
+- لا يوجد في المشروع مسار جاهز للحافظة/الصندوق الإرسال/استمرارية الجلسة اللازمة لتفادي نافذة اختيار المصدر في كل مرة.
+
+---
+
 هذا الملف هو سجل الاستمرارية للجلسة. كل وحدة عمل مكتملة تُضاف هنا بملخص ما أُنجز، القرارات التقنية المتخذة ذاتياً، ونتيجة `cargo test/clippy`.
 
 ---

@@ -33,6 +33,55 @@ pub struct ExecutionPlan {
     pub commands: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MaestroMessage {
+    ExecutionPlan(ExecutionPlan),
+    TaskQuery(TaskQuery),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskQuery {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskSubmitAck {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionOutcome {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Pending,
+    DelegableAutoApproved,
+    HeldForManualApproval,
+    Executed,
+    RejectedByOwner,
+    ExecutionFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskQueryResult {
+    pub task_id: String,
+    pub status: TaskStatus,
+    pub result: Option<ExecutionOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskResolved {
+    pub task_id: String,
+    pub approved: bool,
+}
+
 pub fn serialize<T>(value: &T) -> Result<String, serde_json::Error>
 where
     T: Serialize,

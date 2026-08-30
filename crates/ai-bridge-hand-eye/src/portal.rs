@@ -6,6 +6,7 @@ pub enum PortalError {
     UnsupportedAction,
     MissingAppId,
     Dbus(String),
+    Clipboard(String),
 }
 
 impl std::fmt::Display for PortalError {
@@ -15,6 +16,7 @@ impl std::fmt::Display for PortalError {
             Self::UnsupportedAction => write!(f, "portal action is unsupported"),
             Self::MissingAppId => write!(f, "application identifier is required"),
             Self::Dbus(message) => write!(f, "dbus error: {message}"),
+            Self::Clipboard(message) => write!(f, "clipboard error: {message}"),
         }
     }
 }
@@ -34,6 +36,17 @@ pub struct PortalClient {
 impl PortalClient {
     pub fn new(allowlist: Allowlist) -> Self {
         Self { allowlist }
+    }
+
+    pub fn write_image_to_clipboard(image: &[u8], width: usize, height: usize) -> Result<(), PortalError> {
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| PortalError::Clipboard(e.to_string()))?;
+        let data = arboard::ImageData {
+            width,
+            height,
+            bytes: std::borrow::Cow::Owned(image.to_vec()),
+        };
+        clipboard.set_image(data).map_err(|e| PortalError::Clipboard(e.to_string()))?;
+        Ok(())
     }
 
     pub fn authorize(&self, app_id: &str) -> Result<(), PortalError> {
@@ -107,6 +120,28 @@ pub mod real {
         screencast::{CursorMode, Screencast, SelectSourcesOptions, SourceType},
         PersistMode,
     };
+    use std::fs;
+    use std::path::PathBuf;
+
+    const PORTAL_RESTORE_TOKEN_FILENAME: &str = "portal_restore.token";
+
+    fn portal_restore_path() -> PathBuf {
+        std::env::temp_dir().join("ai_bridge_runtime_sockets").join(PORTAL_RESTORE_TOKEN_FILENAME)
+    }
+
+    fn write_restore_token(token: &str) -> Result<(), PortalError> {
+        let path = portal_restore_path();
+        fs::create_dir_all(path.parent().unwrap()).map_err(|e| PortalError::Dbus(e.to_string()))?;
+        fs::write(&path, token).map_err(|e| PortalError::Dbus(e.to_string()))?;
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| PortalError::Dbus(format!("failed to set permissions on restore token: {e}")))?;
+        Ok(())
+    }
+
+    fn read_restore_token() -> Option<String> {
+        let path = portal_restore_path();
+        fs::read_to_string(path).ok()
+    }
 
     /// Guards that only allowlisted applications can drive the hand.
     pub fn authorize_injection(allowlist: &Allowlist, app_id: &str) -> Result<(), PortalError> {
@@ -199,15 +234,16 @@ pub mod real {
             .await
             .map_err(|e| PortalError::Dbus(e.to_string()))?;
 
+        let restore = read_restore_token();
+        let options = SelectSourcesOptions::default()
+            .set_cursor_mode(CursorMode::Embedded)
+            .set_sources(SourceType::Monitor | SourceType::Window)
+            .set_multiple(true)
+            .set_persist_mode(PersistMode::Application)
+            .set_restore_token(restore.as_deref());
+
         proxy
-            .select_sources(
-                &session,
-                SelectSourcesOptions::default()
-                    .set_cursor_mode(CursorMode::Embedded)
-                    .set_sources(SourceType::Monitor | SourceType::Window)
-                    .set_multiple(true)
-                    .set_persist_mode(PersistMode::DoNot),
-            )
+            .select_sources(&session, options)
             .await
             .map_err(|e| PortalError::Dbus(e.to_string()))?;
 
@@ -217,6 +253,10 @@ pub mod real {
             .map_err(|e| PortalError::Dbus(e.to_string()))?
             .response()
             .map_err(|e| PortalError::Dbus(e.to_string()))?;
+
+        if let Some(token) = response.restore_token() {
+            let _ = write_restore_token(token);
+        }
 
         let node_count = response.streams().len();
         Ok(format!(
