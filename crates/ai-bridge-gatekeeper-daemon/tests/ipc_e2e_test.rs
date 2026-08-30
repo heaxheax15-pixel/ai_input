@@ -6,7 +6,7 @@
 //! Every component here is exercised over a real `tokio::net::UnixStream`, bound
 //! to a unique temporary socket path. No external tools, no scripts.
 
-use ai_bridge_gatekeeper::gatekeeper::{serve_ui_session, ActiveTasks, PendingTask};
+use ai_bridge_gatekeeper_daemon::gatekeeper::{serve_ui_session, ActiveTasks, PendingTask};
 use serde_json::json;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -59,6 +59,7 @@ async fn ui_decision_unblocks_agent_over_unix_socket() {
             command: "rm -rf /tmp/scratch".to_string(),
             risk_level: "HIGH".to_string(),
             is_critical: true,
+            triggered: Vec::new(),
         },
         tx,
     );

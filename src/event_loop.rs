@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use ai_bridge_channels::ChannelName;
-use ai_bridge_gatekeeper::policy::{decide_policy, PolicyDecision};
-use ai_bridge_gatekeeper::timers::{evaluate_timeout, TimerOutcome, GATEKEEPER_TIMEOUT};
+use ai_bridge_gatekeeper_core::policy::{decide_policy, PolicyDecision};
+use ai_bridge_gatekeeper_core::timers::{evaluate_timeout, gatekeeper_timeout, TimerOutcome};
 use ai_bridge_protocol::{ExecutionPlan, SubChatOpenRequest, SubChatResult};
 use ai_bridge_subchat::branch::{Branch, BranchName, SubChatError};
 use thiserror::Error;
@@ -67,28 +67,23 @@ pub fn route_branch_request(
 pub enum GatekeeperVerdict {
     /// A delegable plan still within the 120 s auto-approval window.
     PendingTimeout,
-    /// A delegable plan that reached `GATEKEEPER_TIMEOUT` and was auto-approved.
+    /// A delegable plan that reached the gatekeeper timeout and was auto-approved.
     AutoApproved,
     /// A critical (non-delegable) plan held indefinitely for manual owner approval.
     HeldForManualApproval,
-    /// A hard-blocked plan that raised a permanent suspension.
-    PermanentlySuspended,
 }
 
 /// Applies the Gatekeeper timeout policy to a single policy decision.
 ///
-/// - `Delegable` plans are auto-approved after `GATEKEEPER_TIMEOUT` (120 s).
-/// - `NonDelegable` (critical) plans are held forever, awaiting manual approval.
-/// - `PermanentSuspension` plans are refused outright.
+/// - `Delegable` plans are auto-approved after the runtime gatekeeper timeout.
+/// - `NonDelegable` (critical) plans are held forever, awaiting owner approval.
 pub fn apply_gatekeeper_policy(decision: PolicyDecision, elapsed: Duration) -> GatekeeperVerdict {
     match decision {
         PolicyDecision::Delegable => match evaluate_timeout(true, elapsed) {
             TimerOutcome::AutoApprove => GatekeeperVerdict::AutoApproved,
             TimerOutcome::AwaitingHuman => GatekeeperVerdict::PendingTimeout,
-            TimerOutcome::PermanentSuspension => GatekeeperVerdict::PermanentlySuspended,
         },
         PolicyDecision::NonDelegable => GatekeeperVerdict::HeldForManualApproval,
-        PolicyDecision::PermanentSuspension => GatekeeperVerdict::PermanentlySuspended,
     }
 }
 
@@ -132,7 +127,6 @@ impl PendingPlans {
                 }
                 GatekeeperVerdict::HeldForManualApproval
             }
-            PolicyDecision::PermanentSuspension => GatekeeperVerdict::PermanentlySuspended,
         }
     }
 
@@ -156,7 +150,7 @@ impl PendingPlans {
 
 /// Convenience accessor to surface the configured delegation timeout.
 pub fn delegation_timeout() -> Duration {
-    GATEKEEPER_TIMEOUT
+    gatekeeper_timeout()
 }
 
 #[cfg(test)]
@@ -179,7 +173,7 @@ mod tests {
         }
     }
 
-    fn suspending_plan(task_id: &str) -> ExecutionPlan {
+    fn wipe_plan(task_id: &str) -> ExecutionPlan {
         ExecutionPlan {
             task_id: task_id.to_string(),
             description: "wipe the disk".to_string(),
@@ -274,12 +268,14 @@ mod tests {
     }
 
     #[test]
-    fn suspending_plan_is_permanently_blocked() {
+    fn wipe_plan_is_non_delegable_and_held_for_manual_approval() {
+        // A system-wipe pattern is non-delegable: it awaits the owner's manual
+        // approval (no automatic refusal, no exception).
         let mut pending = PendingPlans::new();
-        let plan = suspending_plan("task-4");
+        let plan = wipe_plan("task-4");
         assert_eq!(
             pending.ingest(&plan, Instant::now()),
-            GatekeeperVerdict::PermanentlySuspended
+            GatekeeperVerdict::HeldForManualApproval
         );
     }
 

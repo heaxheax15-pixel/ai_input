@@ -1,20 +1,20 @@
+use ai_bridge_channels::ChannelName;
 use serde_json::json;
 use std::fs;
-use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixListener;
 use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket_path = "/tmp/public_maestro.sock";
+    let socket_path = ChannelName::PublicMaestro.runtime_socket_path();
 
-    if Path::new(socket_path).exists() {
-        let _ = fs::remove_file(socket_path);
+    if socket_path.exists() {
+        let _ = fs::remove_file(&socket_path);
     }
 
-    let listener = UnixListener::bind(socket_path)?;
-    println!("[Mock Gatekeeper] Listening on {}", socket_path);
+    let listener = UnixListener::bind(&socket_path)?;
+    println!("[Mock Gatekeeper] Listening on {}", socket_path.display());
 
     loop {
         if let Ok((mut stream, _)) = listener.accept().await {
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "risk_level": "HIGH"
             });
             let _ = stream
-                .write_all(format!("{}\n", task1.to_string()).as_bytes())
+                .write_all(format!("{}\n", task1).as_bytes())
                 .await;
 
             sleep(Duration::from_secs(3)).await;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "risk_level": "LOW"
             });
             let _ = stream
-                .write_all(format!("{}\n", task2.to_string()).as_bytes())
+                .write_all(format!("{}\n", task2).as_bytes())
                 .await;
         }
     }

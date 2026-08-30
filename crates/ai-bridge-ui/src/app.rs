@@ -12,6 +12,8 @@ pub enum GatekeeperEvent {
         app_name: String,
         command: String,
         risk_level: String,
+        is_critical: bool,
+        triggered: Vec<String>,
     },
     TaskResolved {
         task_id: String,
@@ -25,6 +27,8 @@ pub struct PendingTask {
     pub app_name: String,
     pub command: String,
     pub risk_level: String,
+    pub is_critical: bool,
+    pub triggered: Vec<String>,
 }
 
 pub enum UiEvent {
@@ -144,7 +148,26 @@ impl DashboardApp {
                                         egui::RichText::new(format!("Risk: {}", task.risk_level))
                                             .color(egui::Color32::RED),
                                     );
+                                    // Criticality badge from server-computed decision
+                                    let (badge_text, badge_color) = if task.is_critical {
+                                        ("CRITICAL", egui::Color32::RED)
+                                    } else {
+                                        ("STANDARD", egui::Color32::GREEN)
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(format!(" [{}]", badge_text))
+                                            .color(badge_color)
+                                            .strong(),
+                                    );
                                 });
+                                // Show triggered criteria if any
+                                if !task.triggered.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(format!("Triggered: {}", task.triggered.join(", ")))
+                                            .color(egui::Color32::YELLOW)
+                                            .italics(),
+                                    );
+                                }
                                 ui.code(format!("Command: {}", task.command));
                                 ui.horizontal(|ui| {
                                     if ui.button("✅ VALVE OPEN (Approve)").clicked() {
@@ -266,22 +289,26 @@ impl eframe::App for DashboardApp {
                     self.sub_a_online = sub_a_online;
                     self.sub_b_online = sub_b_online;
                 }
-                UiEvent::Gatekeeper(ev) => match ev {
-                    GatekeeperEvent::TaskPending {
-                        task_id,
-                        app_name,
-                        command,
-                        risk_level,
-                    } => {
-                        if !self.pending_tasks.iter().any(|t| t.task_id == task_id) {
-                            self.pending_tasks.push(PendingTask {
-                                task_id,
-                                app_name,
-                                command,
-                                risk_level,
-                            });
-                        }
+UiEvent::Gatekeeper(ev) => match ev {
+                GatekeeperEvent::TaskPending {
+                    task_id,
+                    app_name,
+                    command,
+                    risk_level,
+                    is_critical,
+                    triggered,
+                } => {
+                    if !self.pending_tasks.iter().any(|t| t.task_id == task_id) {
+                        self.pending_tasks.push(PendingTask {
+                            task_id,
+                            app_name,
+                            command,
+                            risk_level,
+                            is_critical,
+                            triggered,
+                        });
                     }
+                }
                     GatekeeperEvent::TaskResolved { task_id, .. } => {
                         self.pending_tasks.retain(|t| t.task_id != task_id);
                     }

@@ -14,7 +14,7 @@ pub enum DeliveryDecision {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BranchRunState {
     pub branch_a_result: Option<SubChatResult>,
     pub branch_b_result: Option<SubChatResult>,
@@ -22,12 +22,11 @@ pub struct BranchRunState {
 
 impl BranchRunState {
     pub fn new() -> Self {
-        Self {
-            branch_a_result: None,
-            branch_b_result: None,
-        }
+        Self::default()
     }
+}
 
+impl BranchRunState {
     pub fn mark_finished(&mut self, branch: &str, result: SubChatResult) {
         match branch {
             "A" => self.branch_a_result = Some(result),
@@ -75,11 +74,11 @@ pub async fn await_branch_completion(
     second_result: Option<SubChatResult>,
     timeout: Duration,
 ) -> DeliveryDecision {
-    if second_result.is_some() {
+    if let Some(second) = second_result {
         tokio::time::sleep(Duration::from_millis(10)).await;
         return DeliveryDecision::FullDelivery {
             primary: first_result.clone(),
-            secondary: second_result.expect("second result present"),
+            secondary: second,
         };
     }
 

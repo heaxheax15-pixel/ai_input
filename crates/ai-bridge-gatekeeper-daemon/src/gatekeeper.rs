@@ -4,6 +4,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::oneshot;
 
+use ai_bridge_gatekeeper_core::criteria::Criterion;
+
 /// A human decision returned by the UI for a task that was blocked and awaiting
 /// approval. Arrives over the UI socket as a JSON line shaped
 /// `{ "task_id": String, "approved": bool }` and is used to unblock (approved)
@@ -28,6 +30,9 @@ pub struct PendingTask {
     /// the human indefinitely; non-critical tasks auto-approve after the
     /// delegation timeout elapses.
     pub is_critical: bool,
+    /// The criteria that triggered the classification, advertised to the UI so
+    /// the operator can see why the task was held for approval.
+    pub triggered: Vec<Criterion>,
 }
 
 /// Per-task registry entry: the display metadata plus the oneshot sender used to
@@ -105,33 +110,14 @@ pub fn pending_notification(task: &PendingTask) -> String {
         "app_name": task.app_name,
         "command": task.command,
         "risk_level": task.risk_level,
+        "is_critical": task.is_critical,
+        "triggered": task
+            .triggered
+            .iter()
+            .map(|c| c.label())
+            .collect::<Vec<_>>(),
     })
     .to_string()
-}
-
-/// Waits for the human's decision with the architecture-mandated delegation
-/// timeout.
-///
-/// * Critical tasks are never delegated: they wait indefinitely for the human.
-/// * Non-critical tasks auto-approve (resolve to `true`) when the human stays
-///   silent for `delegation_timeout`.
-///
-/// A dropped decision channel (the determining side is gone, no human present)
-/// denies the task rather than delegating it.
-pub async fn await_human_decision(
-    rx: oneshot::Receiver<bool>,
-    is_critical: bool,
-    delegation_timeout: std::time::Duration,
-) -> bool {
-    if is_critical {
-        rx.await.ok().unwrap_or(false)
-    } else {
-        match tokio::time::timeout(delegation_timeout, rx).await {
-            Ok(Ok(approved)) => approved,
-            Ok(Err(_)) => false,
-            Err(_elapsed) => true,
-        }
-    }
 }
 
 /// Handles a single inbound line read from the UI socket. If the line
@@ -181,7 +167,6 @@ pub async fn serve_ui_session(
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::time::Duration;
 
     fn pending(task_id: &str) -> PendingTask {
         PendingTask {
@@ -190,6 +175,7 @@ mod tests {
             command: "rm -rf /tmp/test_dir".to_string(),
             risk_level: "HIGH".to_string(),
             is_critical: false,
+            triggered: Vec::new(),
         }
     }
 
@@ -250,6 +236,22 @@ mod tests {
         assert_eq!(value["type"], "task_pending");
         assert_eq!(value["task_id"], "TASK-9");
         assert_eq!(value["risk_level"], "HIGH");
+        assert_eq!(value["is_critical"], false);
+        assert_eq!(value["triggered"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn pending_notification_includes_critical_flag_and_triggered_reasons() {
+        let mut task = pending("TASK-10");
+        task.is_critical = true;
+        task.triggered = vec![Criterion::Irreversibility, Criterion::CredentialsSecrets];
+        let line = pending_notification(&task);
+        let value: serde_json::Value = serde_json::from_str(&line).expect("valid JSON");
+        assert_eq!(value["is_critical"], true);
+        assert_eq!(
+            value["triggered"],
+            serde_json::json!(["Irreversibility", "CredentialsSecrets"])
+        );
     }
 
     #[test]
@@ -257,57 +259,5 @@ mod tests {
         let tasks = ActiveTasks::new();
         assert!(tasks.is_empty());
         assert_eq!(tasks.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn critical_task_never_auto_approves() {
-        let (_tx, rx) = oneshot::channel();
-        let decision = await_human_decision(rx, true, Duration::from_millis(50));
-
-        // Even with a far longer budget than the delegation timeout, a critical
-        // task must keep waiting for the human instead of auto-approving.
-        let outcome = tokio::time::timeout(Duration::from_millis(200), decision).await;
-        assert!(outcome.is_err(), "critical task must not auto-delegate");
-    }
-
-    #[tokio::test]
-    async fn critical_task_waits_for_human_approval() {
-        let (tx, rx) = oneshot::channel();
-        let decision =
-            tokio::spawn(
-                async move { await_human_decision(rx, true, Duration::from_millis(50)).await },
-            );
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        tx.send(true).unwrap();
-        assert!(
-            decision.await.unwrap(),
-            "approval must reach the critical task"
-        );
-    }
-
-    #[tokio::test]
-    async fn non_critical_task_auto_approves_when_human_is_silent() {
-        let (_tx, rx) = oneshot::channel();
-        let decision = await_human_decision(rx, false, Duration::from_millis(50)).await;
-        assert!(
-            decision,
-            "a silent human must auto-approve a non-critical task"
-        );
-    }
-
-    #[tokio::test]
-    async fn non_critical_task_respects_explicit_approval() {
-        let (tx, rx) = oneshot::channel();
-        tx.send(true).unwrap();
-        let decision = await_human_decision(rx, false, Duration::from_secs(120)).await;
-        assert!(decision);
-    }
-
-    #[tokio::test]
-    async fn non_critical_task_respects_explicit_rejection() {
-        let (tx, rx) = oneshot::channel();
-        tx.send(false).unwrap();
-        let decision = await_human_decision(rx, false, Duration::from_secs(120)).await;
-        assert!(!decision);
     }
 }

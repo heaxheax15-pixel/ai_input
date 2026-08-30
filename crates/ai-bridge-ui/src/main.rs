@@ -1,8 +1,8 @@
 mod app;
 
+use ai_bridge_channels::ChannelName;
 use app::{GatekeeperEvent, OutboundEvent, UiEvent};
 use eframe::egui;
-use std::path::Path;
 use std::sync::mpsc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -17,9 +17,9 @@ fn main() -> Result<(), eframe::Error> {
     let tx_status = tx.clone();
     rt.spawn(async move {
         loop {
-            let maestro = Path::new("/tmp/ai_bridge_public_maestro.sock").exists();
-            let sub_a = Path::new("/tmp/ai_bridge_private_a.sock").exists();
-            let sub_b = Path::new("/tmp/ai_bridge_private_b.sock").exists();
+            let maestro = ChannelName::PublicMaestro.runtime_socket_path().exists();
+            let sub_a = ChannelName::PrivateA.runtime_socket_path().exists();
+            let sub_b = ChannelName::PrivateB.runtime_socket_path().exists();
 
             let _ = tx_status.send(UiEvent::SocketStatusUpdate {
                 maestro_online: maestro,
@@ -34,10 +34,10 @@ fn main() -> Result<(), eframe::Error> {
     // Gatekeeper Stream Thread (bidirectional)
     let tx_events = tx;
     rt.spawn(async move {
-        let socket_path = "/tmp/public_maestro.sock";
+        let socket_path = ChannelName::PublicMaestro.runtime_socket_path();
         loop {
-            if Path::new(socket_path).exists() {
-                if let Ok(stream) = UnixStream::connect(socket_path).await {
+            if socket_path.exists() {
+                if let Ok(stream) = UnixStream::connect(&socket_path).await {
                     let (reader, mut writer) = stream.into_split();
                     let mut lines = BufReader::new(reader).lines();
 

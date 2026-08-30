@@ -13,6 +13,11 @@ use thiserror::Error;
 
 pub const SECURE_TOKEN_ENV_VAR: &str = "AI_BRIDGE_SECURE_TOKEN";
 pub const HANDSHAKE_PREFIX: &str = "AI_BRIDGE_TOKEN:";
+pub const TOKEN_FILE_SUFFIX: &str = ".token";
+
+/// The single source of truth for the socket directory: `<temp>/ai_bridge_runtime_sockets`.
+/// See [`socket_dir`].
+pub const SOCKET_DIR_REL: &str = "ai_bridge_runtime_sockets";
 
 /// A randomly generated, high-entropy bearer token used as the first
 /// (handshake) message exchanged over a channel socket. Because the maestro
@@ -59,6 +64,20 @@ impl ChannelName {
     pub fn all() -> [Self; 3] {
         [Self::PrivateA, Self::PrivateB, Self::PublicMaestro]
     }
+
+    /// The full absolute socket path for this channel, under the shared runtime
+    /// socket directory. This is the single source of truth for each channel's
+    /// socket path; no component may hardcode `/tmp/public_maestro.sock` etc.
+    pub fn runtime_socket_path(self) -> std::path::PathBuf {
+        socket_dir().join(self.as_str())
+    }
+}
+
+/// The shared, absolute directory that holds every runtime bridge socket. This
+/// is the single source of truth for the socket directory: no other component
+/// may hardcode it.
+pub fn socket_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(SOCKET_DIR_REL)
 }
 
 #[derive(Debug, Error)]
@@ -200,6 +219,18 @@ impl BridgeSocket {
         })
     }
 
+    /// For Case B sockets (independent connectors): write the token to a
+    /// filesystem file at `<socket_dir>/<channel>.token` with mode 0600.
+    /// The external process must read this file before connecting.
+    pub fn write_token_file(&self, socket_dir: impl AsRef<Path>) -> Result<(), ChannelError> {
+        let token_path = socket_dir.as_ref().join(format!("{}{}", self.name.as_str(), TOKEN_FILE_SUFFIX));
+        std::fs::write(&token_path, self.secure_token.as_bytes())
+            .map_err(|e| ChannelError::PathAccess(e.to_string()))?;
+        // Restrict to owner only
+        let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+        Ok(())
+    }
+
     pub fn channel_name(&self) -> ChannelName {
         self.name
     }
@@ -328,6 +359,10 @@ impl ChannelManager {
 
         for channel in ChannelName::all() {
             let socket = BridgeSocket::bind(channel, socket_dir)?;
+            // Case B: public_maestro has independent connectors (UI). Write token file.
+            if channel == ChannelName::PublicMaestro {
+                socket.write_token_file(socket_dir)?;
+            }
             sockets.insert(channel, socket);
         }
 
@@ -343,19 +378,6 @@ impl ChannelManager {
             .values()
             .map(|socket| socket.socket_path().to_path_buf())
             .collect()
-    }
-
-    /// Injects each channel's secure token into the process environment at boot,
-    /// so a spawned peer process can retrieve the token it must present as the
-    /// handshake before exchanging any JSON payload.
-    pub fn inject_tokens_into_env(&self) {
-        for (channel, socket) in &self.sockets {
-            let var = format!("{}_{}", SECURE_TOKEN_ENV_VAR, channel.as_str());
-            std::env::set_var(var, socket.secure_token());
-            if *channel == ChannelName::PublicMaestro {
-                std::env::set_var(SECURE_TOKEN_ENV_VAR, socket.secure_token());
-            }
-        }
     }
 }
 

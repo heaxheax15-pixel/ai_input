@@ -1,6 +1,6 @@
-use ai_bridge_gatekeeper::criteria::{evaluate_criteria, Criterion, EvaluationStatus};
-use ai_bridge_gatekeeper::policy::{decide_policy, PolicyDecision};
-use ai_bridge_gatekeeper::timers::{evaluate_timeout, TimerOutcome, GATEKEEPER_TIMEOUT};
+use ai_bridge_gatekeeper_core::criteria::{evaluate_criteria, Criterion, EvaluationStatus};
+use ai_bridge_gatekeeper_core::policy::{decide_policy, PolicyDecision};
+use ai_bridge_gatekeeper_core::timers::{evaluate_timeout, gatekeeper_timeout, TimerOutcome};
 use ai_bridge_protocol::ExecutionPlan;
 use std::time::Duration;
 
@@ -71,11 +71,12 @@ fn safe_commands_are_delegable() {
 }
 
 #[test]
-fn system_wipe_exception_is_permanent_suspension() {
+fn system_wipe_command_is_non_delegable() {
     let p = plan(&["dd if=/dev/zero of=/dev/sda bs=1M status=progress"]);
     let result = evaluate_criteria(&p);
-    assert_eq!(result.status, EvaluationStatus::PermanentSuspension);
-    assert_eq!(decide_policy(&p), PolicyDecision::PermanentSuspension);
+    assert!(result.triggered.contains(&Criterion::Irreversibility));
+    assert_eq!(result.status, EvaluationStatus::NonDelegable);
+    assert_eq!(decide_policy(&p), PolicyDecision::NonDelegable);
 }
 
 #[test]
@@ -86,14 +87,14 @@ fn timeout_logic_handles_delegable_and_non_delegable_cases() {
     );
     assert_eq!(
         evaluate_timeout(false, Duration::from_secs(121)),
-        TimerOutcome::PermanentSuspension
-    );
-    assert_eq!(
-        evaluate_timeout(true, GATEKEEPER_TIMEOUT - Duration::from_secs(1)),
         TimerOutcome::AwaitingHuman
     );
     assert_eq!(
-        evaluate_timeout(false, GATEKEEPER_TIMEOUT - Duration::from_secs(1)),
+        evaluate_timeout(true, gatekeeper_timeout() - Duration::from_secs(1)),
+        TimerOutcome::AwaitingHuman
+    );
+    assert_eq!(
+        evaluate_timeout(false, gatekeeper_timeout() - Duration::from_secs(1)),
         TimerOutcome::AwaitingHuman
     );
 }

@@ -1,0 +1,19 @@
+[package]
+name = "ai-bridge-gatekeeper-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ai-bridge-gatekeeper-core = { path = "../ai-bridge-gatekeeper-core" }
+ai-bridge-channels = { path = "../ai-bridge-channels" }
+ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+regex = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+shlex = "2.0"
+thiserror = "2.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util", "net", "sync", "process"] }
+
+[[bin]]
+name = "mock_gatekeeper"
+path = "src/bin/mock_gatekeeper.rs"

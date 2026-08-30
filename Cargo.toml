@@ -2,7 +2,8 @@
 members = [
     "crates/ai-bridge-channels",
     "crates/ai-bridge-protocol",
-    "crates/ai-bridge-gatekeeper",
+    "crates/ai-bridge-gatekeeper-core",
+    "crates/ai-bridge-gatekeeper-daemon",
     "crates/ai-bridge-hand-eye",
     "crates/ai-bridge-subchat",
     "crates/ai-bridge-selfheal",
@@ -18,7 +19,8 @@ edition = "2021"
 
 [dependencies]
 ai-bridge-channels = { path = "crates/ai-bridge-channels" }
-ai-bridge-gatekeeper = { path = "crates/ai-bridge-gatekeeper" }
+ai-bridge-gatekeeper-core = { path = "crates/ai-bridge-gatekeeper-core" }
+ai-bridge-gatekeeper-daemon = { path = "crates/ai-bridge-gatekeeper-daemon" }
 ai-bridge-hand-eye = { path = "crates/ai-bridge-hand-eye" }
 ai-bridge-protocol = { path = "crates/ai-bridge-protocol" }
 ai-bridge-selfheal = { path = "crates/ai-bridge-selfheal" }

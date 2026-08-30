@@ -17,7 +17,7 @@ const ROOT_TASK_ID: &str = "root-task";
 async fn main() -> Result<()> {
     let config = default_runtime_config()?;
     let allowlist = config.load_allowlist()?;
-    let runtime_sockets = std::env::temp_dir().join("ai_bridge_runtime_sockets");
+    let runtime_sockets = ai_bridge_channels::socket_dir();
     let manager = Arc::new(
         ChannelManager::initialize(&runtime_sockets).with_context(|| {
             format!(
@@ -27,11 +27,7 @@ async fn main() -> Result<()> {
         })?,
     );
 
-    // Inject each channel's secure token into the environment at boot so that
-    // spawned peer processes can present the handshake before sending work.
-    manager.inject_tokens_into_env();
-
-    log_boot(&manager, &allowlist);
+    log_boot(&manager, &allowlist, &runtime_sockets);
 
     run_event_loop(manager, &allowlist, runtime_sockets).await?;
     println!("[DAEMON MODE COMPLETED AND TESTED. WAITING FOR FINAL ORDERS.]");
@@ -39,7 +35,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn log_boot(manager: &ChannelManager, allowlist: &Allowlist) {
+fn log_boot(manager: &ChannelManager, allowlist: &Allowlist, runtime_sockets: &std::path::Path) {
     println!(
         "[BOOT] ai-bridge daemon starting (pid {})",
         std::process::id()
@@ -52,6 +48,11 @@ fn log_boot(manager: &ChannelManager, allowlist: &Allowlist) {
                 socket.secure_token().len()
             ),
             None => println!("[BOOT] channel {channel:?} failed to initialize"),
+        }
+        // For public_maestro (Case B), also show token file path
+        if channel == ChannelName::PublicMaestro {
+            let token_file = runtime_sockets.join(format!("{}.token", channel.as_str()));
+            println!("[BOOT] channel {channel:?} token file: {}", token_file.display());
         }
     }
     let allowed = [
@@ -241,10 +242,6 @@ fn handle_maestro_message(pending: &mut PendingPlans, raw: &str) -> Result<(), C
         ),
         GatekeeperVerdict::HeldForManualApproval => println!(
             "[GATEKEEPER] critical plan {} held forever awaiting manual owner approval",
-            plan.task_id
-        ),
-        GatekeeperVerdict::PermanentlySuspended => println!(
-            "[GATEKEEPER] plan {} permanently suspended (hard block)",
             plan.task_id
         ),
     }
