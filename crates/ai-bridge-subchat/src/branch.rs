@@ -19,7 +19,7 @@ pub struct Branch {
 
 #[derive(Debug, Error)]
 pub enum SubChatError {
-    #[error("sub-chat limit exceeded for task {task_id}: maximum of 2 sub-chats allowed")]
+    #[error("sub-chat limit exceeded for task {task_id}: maximum of 3 sub-chats allowed")]
     SubChatLimitExceeded { task_id: String },
     #[error("invalid task id: {0}")]
     InvalidTaskId(String),
@@ -45,7 +45,7 @@ impl Branch {
     }
 
     pub fn sub_chat_limit(&self) -> usize {
-        2
+        3
     }
 
     fn await_maestro(&self, query: &ContextQuery) -> ContextResponse {
@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn branch_limits_sub_chats_to_two_per_task() {
+    fn branch_limits_sub_chats_to_three_per_task() {
         let mut branch =
             Branch::new(BranchName::A, "task-7").with_master_message("master context".to_string());
         let first = SubChatOpenRequest {
@@ -138,6 +138,11 @@ mod tests {
             prompt: "Third prompt".to_string(),
             branch: "A".to_string(),
         };
+        let fourth = SubChatOpenRequest {
+            task_id: "task-7".to_string(),
+            prompt: "Fourth prompt".to_string(),
+            branch: "A".to_string(),
+        };
 
         let first_result = branch.open_sub_chat(&first).unwrap();
         assert_eq!(first_result.call_index, 0);
@@ -147,11 +152,15 @@ mod tests {
         assert_eq!(second_result.call_index, 1);
         assert!(second_result.result.contains("master context"));
 
+        let third_result = branch.open_sub_chat(&third).unwrap();
+        assert_eq!(third_result.call_index, 2);
+        assert!(third_result.result.contains("master context"));
+
         assert!(matches!(
-            branch.open_sub_chat(&third),
+            branch.open_sub_chat(&fourth),
             Err(SubChatError::SubChatLimitExceeded { .. })
         ));
-        assert_eq!(branch.sub_chat_counter, 2);
+        assert_eq!(branch.sub_chat_counter, 3);
     }
 
     #[test]
