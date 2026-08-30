@@ -115,6 +115,60 @@ cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطا
 
 ---
 
-## النقاط المعلقة (ستعالج في الوحدات اللاحقة)
+## الوحدة 5: تنظيف نهائي + تحقق Git + تحديث OPEN_QUESTIONS.md (القسم 6)
 
-- [ ] **الوحدة 5**: تنظيف نهائي + تحقق Git + تحديث OPEN_QUESTIONS.md (القسم 6).
+**تاريخ الإنجاز**: 2025-08-30
+
+### ما أُنجز
+1. **clippy نظيف** (القسم 6.1):
+   - `cargo clippy --workspace --all-targets -- -D warnings` يمر بلا أخطاء/تحذيرات
+   - أصلح تحذير `clippy::io-other-error` في `executor.rs`
+
+2. **تحقق .gitignore / Cargo.lock** (القسم 6.2):
+   - `.gitignore` يحتوي `target/` و `*.sock` — صحيح
+   - `Cargo.lock` متتبع في git — صحيح (`git status Cargo.lock` يظهر clean)
+
+3. **تحديث OPEN_QUESTIONS.md** (القسم 6.3):
+   - أبقيت الأسئلة الحقيقية غير المحسومة فقط:
+     1. تطبيق الطرفية الرسمي (`org.gnome.Terminal` أم آخر؟)
+     2. مسار قاعدة بيانات تطبيقات الدردشة لـ `desktop-io`
+     3. حد أقصى المحادثات الفرعية (حالياً 2، قابل للتعديل؟)
+   - أضفت قسم "الأسئلة المحلولة" كمرجع
+
+### نتيجة التحقق
+```
+cargo test --workspace → 74 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطاء/تحذيرات
+```
+
+---
+
+## ملخص نهائي — كل القرارات التقنية المتخذة ذاتياً
+
+| # | القرار | المبرر | الوحدة |
+|---|----------|---------|---------|
+| 1 | حذف `gatekeeper.rs` الثنائي المستقل | تعارض bind على `public_maestro.sock` + تكرار كامل للمنطق مع الديمون الرئيسي `src/main.rs` | 1 |
+| 2 | إبقاء `mock_gatekeeper.rs` | مطلوب لاختبار IPC E2E، لا يربط في الإنتاج | 1 |
+| 3 | جعل فشل `set_permissions` في `write_token_file` قاتلاً | مطلوب صريحاً في القسم 4.3: "فشل ضبط هذه الصلاحية يجب أن يكون قاتلاً" | 2 |
+| 4 | لا آلية توكن لـ `private_a`/`private_b` حالياً | لا متصل خارجي اليوم؛ Branch/OrphanWorker استدعاءات داخل العملية فقط (YAGNI) | 3 |
+| 5 | مسار تحميل متعدد لـ `ExecutorAllowlist::load_default()` | `CARGO_MANIFEST_DIR` لا يعمل موثوقاً في الاختبارات؛ البحث في cwd + نسبية + workspace root يغطي كل الحالات | 4 |
+| 6 | خطأ `PermissionDenied` للثنائي غير المسموح | دلالة واضحة للطبقة المستقلة؛ ليس `InvalidInput` لأنه أمر صحيح نحوياً لكن ممنوع بالسياسة | 4 |
+| 7 | `io::Error::other` بدل `Error::new(Other, ...)` | مطلب clippy (`clippy::io-other-error`) | 4 |
+
+---
+
+## الأسئلة الباقية في OPEN_QUESTIONS.md (بانتظار المالك)
+
+1. **تطبيق الطرفية الرسمي**: `org.gnome.Terminal` أم آخر؟
+2. **مسار قاعدة بيانات تطبيقات الدردشة**: SQLite/Cache/JSON path محدد للمايسترو/A/B؟
+3. **حد أقصى المحادثات الفرعية**: `sub_chat_limit = 2` حالياً — نهائي أم قابل للتهيئة؟
+
+---
+
+## إجمالي اختبارات المشروع
+```
+74 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → نظيف
+```
+
+**الحالة**: ✅ جميع الأقسام 1-6 مكتملة. المشروع جاهز للإنتاج.
