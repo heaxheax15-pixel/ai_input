@@ -72,6 +72,27 @@ pub fn role_swap_on_failure(
     }
 }
 
+pub fn build_failure_status_summary(
+    app_id: &str,
+    failure_reason: &str,
+    elapsed: Duration,
+) -> String {
+    let reason = if failure_reason.trim().is_empty() {
+        "SilentTimeout".to_string()
+    } else {
+        failure_reason.trim().to_string()
+    };
+    let elapsed_label = if elapsed.as_secs() >= 1 {
+        format!("{}s", elapsed.as_secs())
+    } else {
+        "<1s".to_string()
+    };
+
+    format!(
+        "App: {app_id}\nFailure: {reason}\nElapsed since last response: {elapsed_label}\nAction: role swapped to the remaining healthy branch and recovery initiated."
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +118,17 @@ mod tests {
         let directive = role_swap_on_failure(true, BranchRole::BranchA);
         assert_eq!(directive.active_maestro, BranchRole::BranchA);
         assert_eq!(directive.continued_branch, BranchRole::BranchB);
+    }
+
+    #[test]
+    fn failure_summary_captures_app_name_reason_and_elapsed() {
+        let summary = super::build_failure_status_summary(
+            "org.mozilla.firefox",
+            "SilentTimeout",
+            Duration::from_secs(45),
+        );
+        assert!(summary.contains("org.mozilla.firefox"));
+        assert!(summary.contains("SilentTimeout"));
+        assert!(summary.contains("45s"));
     }
 }

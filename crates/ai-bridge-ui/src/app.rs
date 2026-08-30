@@ -125,7 +125,14 @@ impl DashboardApp {
 
     fn set_role_for_app(&mut self, app_id: String, role: BranchRole) {
         let message = app_id.clone();
-        self.role_assignments.set_role(app_id, role);
+        match role {
+            BranchRole::Maestro => {
+                self.role_assignments.promote_maestro(&app_id);
+            }
+            _ => {
+                self.role_assignments.set_role(app_id.clone(), role);
+            }
+        }
         if let Err(err) = self.role_assignments.save_default() {
             self.ui_message = format!("Role update failed to save: {err}");
         } else {
@@ -430,37 +437,25 @@ impl RoleAssignmentSet {
     pub fn current_maestro(&self) -> Option<&RoleAssignment> {
         self.roles.iter().find(|entry| entry.role == BranchRole::Maestro)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    pub fn promote_maestro(&mut self, app_id: &str) {
+        let app_id = app_id.to_string();
 
-    #[test]
-    fn role_assignments_round_trip_through_toml() {
-        let expected = RoleAssignmentSet {
-            roles: vec![
-                RoleAssignment { app_id: "org.gnome.Terminal".into(), role: BranchRole::Maestro },
-                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
-            ],
-        };
+        for entry in &mut self.roles {
+            if entry.role == BranchRole::Maestro && entry.app_id != app_id {
+                entry.role = BranchRole::None;
+            }
+        }
 
-        let raw = toml::to_string(&expected).unwrap();
-        let loaded: RoleAssignmentSet = toml::from_str(&raw).unwrap();
-        assert_eq!(loaded.roles, expected.roles);
-    }
+        if let Some(entry) = self.roles.iter_mut().find(|entry| entry.app_id == app_id) {
+            entry.role = BranchRole::Maestro;
+            return;
+        }
 
-    #[test]
-    fn no_maestro_is_detected_when_missing() {
-        let assignments = RoleAssignmentSet {
-            roles: vec![
-                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
-                RoleAssignment { app_id: "org.gnome.Nautilus".into(), role: BranchRole::BranchB },
-            ],
-        };
-
-        let current = assignments.current_maestro();
-        assert!(current.is_none());
+        self.roles.push(RoleAssignment {
+            app_id,
+            role: BranchRole::Maestro,
+        });
     }
 }
 
@@ -477,26 +472,26 @@ impl eframe::App for DashboardApp {
                     self.sub_a_online = sub_a_online;
                     self.sub_b_online = sub_b_online;
                 }
-UiEvent::Gatekeeper(ev) => match ev {
-                GatekeeperEvent::TaskPending {
-                    task_id,
-                    app_name,
-                    command,
-                    risk_level,
-                    is_critical,
-                    triggered,
-                } => {
-                    if !self.pending_tasks.iter().any(|t| t.task_id == task_id) {
-                        self.pending_tasks.push(PendingTask {
-                            task_id,
-                            app_name,
-                            command,
-                            risk_level,
-                            is_critical,
-                            triggered,
-                        });
+                UiEvent::Gatekeeper(ev) => match ev {
+                    GatekeeperEvent::TaskPending {
+                        task_id,
+                        app_name,
+                        command,
+                        risk_level,
+                        is_critical,
+                        triggered,
+                    } => {
+                        if !self.pending_tasks.iter().any(|t| t.task_id == task_id) {
+                            self.pending_tasks.push(PendingTask {
+                                task_id,
+                                app_name,
+                                command,
+                                risk_level,
+                                is_critical,
+                                triggered,
+                            });
+                        }
                     }
-                }
                     GatekeeperEvent::TaskResolved { task_id, .. } => {
                         self.pending_tasks.retain(|t| t.task_id != task_id);
                     }
@@ -537,5 +532,52 @@ UiEvent::Gatekeeper(ev) => match ev {
         });
 
         ctx.request_repaint_after(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_assignments_round_trip_through_toml() {
+        let expected = RoleAssignmentSet {
+            roles: vec![
+                RoleAssignment { app_id: "org.gnome.Terminal".into(), role: BranchRole::Maestro },
+                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
+            ],
+        };
+
+        let raw = toml::to_string(&expected).unwrap();
+        let loaded: RoleAssignmentSet = toml::from_str(&raw).unwrap();
+        assert_eq!(loaded.roles, expected.roles);
+    }
+
+    #[test]
+    fn no_maestro_is_detected_when_missing() {
+        let assignments = RoleAssignmentSet {
+            roles: vec![
+                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
+                RoleAssignment { app_id: "org.gnome.Nautilus".into(), role: BranchRole::BranchB },
+            ],
+        };
+
+        let current = assignments.current_maestro();
+        assert!(current.is_none());
+    }
+
+    #[test]
+    fn switching_maestro_promotes_new_app_and_keeps_single_maestro() {
+        let mut assignments = RoleAssignmentSet {
+            roles: vec![
+                RoleAssignment { app_id: "org.gnome.Terminal".into(), role: BranchRole::Maestro },
+                RoleAssignment { app_id: "org.mozilla.firefox".into(), role: BranchRole::BranchA },
+            ],
+        };
+
+        assignments.promote_maestro("org.mozilla.firefox");
+
+        assert_eq!(assignments.current_maestro().unwrap().app_id, "org.mozilla.firefox");
+        assert_eq!(assignments.roles.iter().filter(|r| r.role == BranchRole::Maestro).count(), 1);
     }
 }
