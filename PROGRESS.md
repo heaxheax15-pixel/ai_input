@@ -59,8 +59,23 @@ cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطا
 
 ---
 
+## الوحدة 3: توثيق القنوات الداخلية المعلقة (القسم 4.4)
+
+**تاريخ الإنجاز**: 2025-08-30
+
+### ما أُنجز
+- توثيق في PROGRESS.md للحالة الحالية لقناتي `private_a.sock` و `private_b.sock`:
+  - **لا متصل خارجي اليوم**: `grep -rn "connect("` يكشف فقط `public_maestro.sock` (واجهة UI). لا يوجد كود يتصل بـ `private_a` أو `private_b`.
+  - **Branch/OrphanWorker استدعاءات داخل العملية فقط**: مسار الاستدعاء: `handle_branch_message` (src/main.rs:200) → `route_branch_request` (event_loop.rs:55) → `Branch::open_sub_chat` (subchat/branch.rs:58) → `OrphanWorker::run` (subchat/orphan.rs:34). صفر IPC.
+  - **SO_PEERCRED كافٍ حالياً**: التحقق من UID عبر `getsockopt(PeerCredentials)` يحدث عند كل `accept()` — نفس UID للديمون = اتصال مسموح.
+  - **آلية SecureToken معلقة**: لا داعي لاختراع آلية توكن الآن. ستُضاف عند وجود مستهلك خارجي فعلي (Case A: spawn من الديمون، أو Case B: عملية مستقلة).
+
+### قرار تقني ذاتي
+عدم إضافة ملفات `.token` أو حقن env للقنوات الداخلية — YAGNI. التوثيق هنا مرجع للجلسة القادمة.
+
+---
+
 ## النقاط المعلقة (ستعالج في الوحدات اللاحقة)
 
-- [ ] **الوحدة 3**: توثيق القنوات الداخلية المعلقة في PROGRESS.md (القسم 4.4).
 - [ ] **الوحدة 4**: قائمة سماح الثنائيات القابلة للتنفيذ (القسم 5 كاملاً).
 - [ ] **الوحدة 5**: تنظيف نهائي + تحقق Git + تحديث OPEN_QUESTIONS.md (القسم 6).
