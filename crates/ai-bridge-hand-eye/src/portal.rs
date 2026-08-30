@@ -134,11 +134,14 @@ pub fn build_failure_status_text(app_id: &str, failure_reason: &str, elapsed: Du
 pub mod real {
     use super::*;
     use ashpd::desktop::{
-        remote_desktop::{DeviceType, KeyState, RemoteDesktop, SelectDevicesOptions},
+        remote_desktop::{
+            DeviceType, KeyState, RemoteDesktop, SelectDevicesOptions, StartOptions,
+        },
         screencast::{CursorMode, Screencast, SelectSourcesOptions, SourceType},
         PersistMode,
     };
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
     const PORTAL_RESTORE_TOKEN_FILENAME: &str = "portal_restore.token";
@@ -159,6 +162,37 @@ pub mod real {
     fn read_restore_token() -> Option<String> {
         let path = portal_restore_path();
         fs::read_to_string(path).ok()
+    }
+
+    pub fn char_to_keysym(ch: char) -> Option<u32> {
+        match ch {
+            ' ' => Some(0x20),
+            '\n' | '\r' => None,
+            _ => {
+                let code = ch as u32;
+                if (0x20..=0x7E).contains(&code) {
+                    Some(code)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    async fn inject_keysym(
+        proxy: &RemoteDesktop,
+        session: &ashpd::desktop::Session,
+        keysym: i32,
+    ) -> Result<(), PortalError> {
+        proxy
+            .notify_keyboard_keysym(&session, keysym, KeyState::Pressed, Default::default())
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+        proxy
+            .notify_keyboard_keysym(&session, keysym, KeyState::Released, Default::default())
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+        Ok(())
     }
 
     /// Guards that only allowlisted applications can drive the hand.
@@ -250,17 +284,52 @@ pub mod real {
         Err(PortalError::UnsupportedAction)
     }
 
-    /// TODO: the real implementation requires a verified, display-backed capture
-    /// pipeline that yields actual frame data, real image dimensions, and a text
-    /// input method that is not built from hand-written keycode guesses.
     pub async fn capture_and_inject_failure_context(
-        _allowlist: &Allowlist,
-        _failed_app_id: &str,
-        _new_maestro_app_id: &str,
-        _failure_reason: &str,
-        _elapsed: Duration,
+        allowlist: &Allowlist,
+        failed_app_id: &str,
+        new_maestro_app_id: &str,
+        failure_reason: &str,
+        elapsed: Duration,
     ) -> Result<(), PortalError> {
-        Err(PortalError::UnsupportedAction)
+        authorize_injection(allowlist, new_maestro_app_id)?;
+
+        let proxy = RemoteDesktop::new()
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+        let session = proxy
+            .create_session(Default::default())
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+
+        proxy
+            .select_devices(
+                &session,
+                SelectDevicesOptions::default()
+                    .set_devices(DeviceType::Keyboard | DeviceType::Pointer),
+            )
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+
+        proxy
+            .start(&session, None, StartOptions::default())
+            .await
+            .map_err(|e| PortalError::Dbus(e.to_string()))?;
+
+        let text = build_failure_status_text(failed_app_id, failure_reason, elapsed);
+        for ch in text.chars() {
+            if ch == '\n' {
+                inject_keysym(&proxy, &session, 0xff0d).await?;
+                continue;
+            }
+
+            let Some(keysym) = char_to_keysym(ch) else {
+                continue;
+            };
+
+            inject_keysym(&proxy, &session, keysym as i32).await?;
+        }
+
+        Ok(())
     }
 
     /// Eye: opens a ScreenCast session used exclusively for image capture or
@@ -358,6 +427,19 @@ pub mod real {
             assert!(text.contains("org.gnome.Terminal"));
             assert!(text.contains("SilentTimeout"));
             assert!(text.contains("45s"));
+        }
+
+        #[test]
+        fn char_to_keysym_maps_ascii_printable_and_rejects_non_ascii() {
+            assert_eq!(super::char_to_keysym('A'), Some(0x41));
+            assert_eq!(super::char_to_keysym(' '), Some(0x20));
+            assert_eq!(super::char_to_keysym(':'), Some(0x3A));
+            assert_eq!(super::char_to_keysym('-'), Some(0x2D));
+            assert_eq!(super::char_to_keysym('_'), Some(0x5F));
+            assert_eq!(super::char_to_keysym('.'), Some(0x2E));
+            assert_eq!(super::char_to_keysym('/'), Some(0x2F));
+            assert_eq!(super::char_to_keysym('é'), None);
+            assert_eq!(super::char_to_keysym('\n'), None);
         }
     }
 }
