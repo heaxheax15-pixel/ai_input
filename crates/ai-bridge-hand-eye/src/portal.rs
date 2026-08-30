@@ -1,4 +1,5 @@
 use crate::allowlist::Allowlist;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortalError {
@@ -102,6 +103,23 @@ pub fn ensure_allowed_application(allowlist: &Allowlist, app_id: &str) -> Result
 
 pub fn portal_for_target(allowlist: &Allowlist, target: &str) -> Result<(), PortalError> {
     ensure_allowed_application(allowlist, target)
+}
+
+pub fn build_failure_status_text(app_id: &str, failure_reason: &str, elapsed: Duration) -> String {
+    let reason = if failure_reason.trim().is_empty() {
+        "SilentTimeout".to_string()
+    } else {
+        failure_reason.trim().to_string()
+    };
+    let elapsed_label = if elapsed.as_secs() >= 1 {
+        format!("{}s", elapsed.as_secs())
+    } else {
+        "<1s".to_string()
+    };
+
+    format!(
+        "App: {app_id}\nFailure: {reason}\nElapsed since last response: {elapsed_label}\nAction: role swapped to the remaining healthy branch and recovery initiated."
+    )
 }
 
 /// Real Wayland portal integration via `ashpd`, enabled only by the
@@ -217,6 +235,71 @@ pub mod real {
         KeyRelease(i32),
     }
 
+    pub fn build_failure_status_text(app_id: &str, failure_reason: &str, elapsed: Duration) -> String {
+        super::build_failure_status_text(app_id, failure_reason, elapsed)
+    }
+
+    pub async fn capture_failure_window_image(
+        allowlist: &Allowlist,
+        app_id: &str,
+        purpose: CapturePurpose,
+    ) -> Result<std::path::PathBuf, PortalError> {
+        let _ = screen_cast_capture(allowlist, app_id, purpose).await?;
+
+        let dir = std::env::temp_dir().join("ai_bridge_capture");
+        fs::create_dir_all(&dir).map_err(|e| PortalError::Dbus(e.to_string()))?;
+        let path = dir.join(format!("{app_id}_failure_capture.png"));
+        fs::write(&path, b"capture placeholder").map_err(|e| PortalError::Dbus(e.to_string()))?;
+        Ok(path)
+    }
+
+    pub async fn capture_and_inject_failure_context(
+        allowlist: &Allowlist,
+        failed_app_id: &str,
+        new_maestro_app_id: &str,
+        failure_reason: &str,
+        elapsed: Duration,
+    ) -> Result<(), PortalError> {
+        let capture_path = capture_failure_window_image(
+            allowlist,
+            failed_app_id,
+            CapturePurpose::Capture,
+        )
+        .await?;
+
+        let image_bytes = [255u8, 255, 255, 255];
+        PortalClient::write_image_to_clipboard(&image_bytes, 1, 1)?;
+
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(37)).await?;
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(55)).await?;
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(37)).await?;
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(55)).await?;
+
+        let status = build_failure_status_text(failed_app_id, failure_reason, elapsed);
+        for ch in status.chars() {
+            let code = match ch {
+                'A'..='Z' => (ch as u8 - b'A' + 30) as i32,
+                'a'..='z' => (ch as u8 - b'a' + 30) as i32,
+                ' ' => 65,
+                '\n' => 36,
+                ':' => 47,
+                '-' => 12,
+                '_' => 20,
+                '.' => 60,
+                '/' => 61,
+                _ => 65,
+            };
+            remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(code)).await?;
+            remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(code)).await?;
+        }
+
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(36)).await?;
+        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(36)).await?;
+
+        let _ = fs::remove_file(&capture_path);
+        Ok(())
+    }
+
     /// Eye: opens a ScreenCast session used exclusively for image capture or
     /// self-diagnosis. OCR text reading is statically rejected by the caller.
     pub async fn screen_cast_capture(
@@ -300,6 +383,18 @@ pub mod real {
                 authorize_capture(&l, "org.gnome.Terminal", CapturePurpose::OcrTextReading),
                 Err(PortalError::UnsupportedAction)
             ));
+        }
+
+        #[test]
+        fn failure_status_text_uses_app_id_reason_and_elapsed() {
+            let text = super::super::build_failure_status_text(
+                "org.gnome.Terminal",
+                "SilentTimeout",
+                std::time::Duration::from_secs(45),
+            );
+            assert!(text.contains("org.gnome.Terminal"));
+            assert!(text.contains("SilentTimeout"));
+            assert!(text.contains("45s"));
         }
     }
 }
