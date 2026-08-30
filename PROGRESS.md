@@ -36,13 +36,31 @@ cargo clippy --workspace --all-targets -- -D warnings
 |----------|---------|
 | حذف `gatekeeper.rs` الثنائي المستقل | تعارض bind على `public_maestro.sock` + تكرار كامل للمنطق مع الديمون الرئيسي |
 | إبقاء `mock_gatekeeper.rs` | مطلوب لاختبار IPC E2E، لا يربط في الإنتاج |
+| جعل فشل `set_permissions` في `write_token_file` قاتلاً | مطلوب صريحاً في القسم 4.3 — "فشل ضبط هذه الصلاحية يجب أن يكون قاتلاً" |
 | لا آلية توكن لـ `private_a`/`private_b` حالياً | لا متصل خارجي اليوم؛ Branch/OrphanWorker استدعاءات داخل العملية فقط |
+
+---
+
+## الوحدة 2: إصلاح `write_token_file` — فشل الأذونات قاتل (القسم 4.3)
+
+**تاريخ الإنجاز**: 2025-08-30
+
+### ما أُنجز
+- تعديل `crates/ai-bridge-channels/src/lib.rs` دالة `write_token_file`:
+  - استبدال `let _ = std::fs::set_permissions(...)` بـ `std::fs::set_permissions(...).map_err(...)?;`
+  - فشل ضبط صلاحيات ملف التوكن (0600) أصبح يعيد `ChannelError::PathAccess` ويوقف إقلاع الديمون.
+  - تعليق توضيحي مضاف: "Failure to set permissions is fatal — the daemon must not start with an insecure token file."
+
+### نتيجة التحقق
+```
+cargo test --workspace → 71 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطاء/تحذيرات
+```
 
 ---
 
 ## النقاط المعلقة (ستعالج في الوحدات اللاحقة)
 
-- [ ] **الوحدة 2**: جعل فشل `set_permissions` في `write_token_file` قاتلاً (القسم 4.3) — حالياً `let _ = ...` يهمل الفشل بصمت.
 - [ ] **الوحدة 3**: توثيق القنوات الداخلية المعلقة في PROGRESS.md (القسم 4.4).
 - [ ] **الوحدة 4**: قائمة سماح الثنائيات القابلة للتنفيذ (القسم 5 كاملاً).
 - [ ] **الوحدة 5**: تنظيف نهائي + تحقق Git + تحديث OPEN_QUESTIONS.md (القسم 6).

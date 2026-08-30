@@ -222,12 +222,15 @@ impl BridgeSocket {
     /// For Case B sockets (independent connectors): write the token to a
     /// filesystem file at `<socket_dir>/<channel>.token` with mode 0600.
     /// The external process must read this file before connecting.
+    /// Failure to set permissions is fatal — the daemon must not start with
+    /// an insecure token file.
     pub fn write_token_file(&self, socket_dir: impl AsRef<Path>) -> Result<(), ChannelError> {
         let token_path = socket_dir.as_ref().join(format!("{}{}", self.name.as_str(), TOKEN_FILE_SUFFIX));
         std::fs::write(&token_path, self.secure_token.as_bytes())
             .map_err(|e| ChannelError::PathAccess(e.to_string()))?;
-        // Restrict to owner only
-        let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
+        // Restrict to owner only — failure is fatal (section 4.3)
+        std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| ChannelError::PathAccess(format!("failed to set token file permissions: {e}")))?;
         Ok(())
     }
 
