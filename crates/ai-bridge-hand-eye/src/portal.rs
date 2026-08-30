@@ -239,65 +239,28 @@ pub mod real {
         super::build_failure_status_text(app_id, failure_reason, elapsed)
     }
 
+    /// TODO: real capture requires reading actual frame bytes from the PipeWire
+    /// screencast stream opened by the portal session. `screen_cast_capture()`
+    /// only creates/starts the session and does not currently expose pixel data.
     pub async fn capture_failure_window_image(
-        allowlist: &Allowlist,
-        app_id: &str,
-        purpose: CapturePurpose,
+        _allowlist: &Allowlist,
+        _app_id: &str,
+        _purpose: CapturePurpose,
     ) -> Result<std::path::PathBuf, PortalError> {
-        let _ = screen_cast_capture(allowlist, app_id, purpose).await?;
-
-        let dir = std::env::temp_dir().join("ai_bridge_capture");
-        fs::create_dir_all(&dir).map_err(|e| PortalError::Dbus(e.to_string()))?;
-        let path = dir.join(format!("{app_id}_failure_capture.png"));
-        fs::write(&path, b"capture placeholder").map_err(|e| PortalError::Dbus(e.to_string()))?;
-        Ok(path)
+        Err(PortalError::UnsupportedAction)
     }
 
+    /// TODO: the real implementation requires a verified, display-backed capture
+    /// pipeline that yields actual frame data, real image dimensions, and a text
+    /// input method that is not built from hand-written keycode guesses.
     pub async fn capture_and_inject_failure_context(
-        allowlist: &Allowlist,
-        failed_app_id: &str,
-        new_maestro_app_id: &str,
-        failure_reason: &str,
-        elapsed: Duration,
+        _allowlist: &Allowlist,
+        _failed_app_id: &str,
+        _new_maestro_app_id: &str,
+        _failure_reason: &str,
+        _elapsed: Duration,
     ) -> Result<(), PortalError> {
-        let capture_path = capture_failure_window_image(
-            allowlist,
-            failed_app_id,
-            CapturePurpose::Capture,
-        )
-        .await?;
-
-        let image_bytes = [255u8, 255, 255, 255];
-        PortalClient::write_image_to_clipboard(&image_bytes, 1, 1)?;
-
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(37)).await?;
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(55)).await?;
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(37)).await?;
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(55)).await?;
-
-        let status = build_failure_status_text(failed_app_id, failure_reason, elapsed);
-        for ch in status.chars() {
-            let code = match ch {
-                'A'..='Z' => (ch as u8 - b'A' + 30) as i32,
-                'a'..='z' => (ch as u8 - b'a' + 30) as i32,
-                ' ' => 65,
-                '\n' => 36,
-                ':' => 47,
-                '-' => 12,
-                '_' => 20,
-                '.' => 60,
-                '/' => 61,
-                _ => 65,
-            };
-            remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(code)).await?;
-            remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(code)).await?;
-        }
-
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyPress(36)).await?;
-        remote_desktop_inject(allowlist, new_maestro_app_id, InputEvent::KeyRelease(36)).await?;
-
-        let _ = fs::remove_file(&capture_path);
-        Ok(())
+        Err(PortalError::UnsupportedAction)
     }
 
     /// Eye: opens a ScreenCast session used exclusively for image capture or
