@@ -1,0 +1,55 @@
+[[binaries]]
+name = "cargo"
+allowed = true
+
+[[binaries]]
+name = "git"
+allowed = true
+
+[[binaries]]
+name = "ls"
+allowed = true
+
+[[binaries]]
+name = "cat"
+allowed = true
+
+[[binaries]]
+name = "echo"
+allowed = true
+
+[[binaries]]
+name = "mkdir"
+allowed = true
+
+[[binaries]]
+name = "rm"
+allowed = true
+
+[[binaries]]
+name = "cp"
+allowed = true
+
+[[binaries]]
+name = "mv"
+allowed = true
+
+[[binaries]]
+name = "rustc"
+allowed = true
+
+[[binaries]]
+name = "rustup"
+allowed = true
+
+[[binaries]]
+name = "clippy"
+allowed = true
+
+[[binaries]]
+name = "fmt"
+allowed = true
+
+[[binaries]]
+name = "test"
+allowed = true

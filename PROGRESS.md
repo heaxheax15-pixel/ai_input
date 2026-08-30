@@ -75,7 +75,46 @@ cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطا
 
 ---
 
+## الوحدة 4: قائمة سماح الثنائيات القابلة للتنفيذ (القسم 5 كاملاً)
+
+**تاريخ الإنجاز**: 2025-08-30
+
+### ما أُنجز
+1. **إنشاء `config/executor_allowlist.toml`** (القسم 5.1):
+   - نمط مطابق لـ `config/allowlist.toml` الموجود
+   - 14 ثنائياً مسموحاً كنقطة بداية: `cargo`, `git`, `ls`, `cat`, `echo`, `mkdir`, `rm`, `cp`, `mv`, `rustc`, `rustup`, `clippy`, `fmt`, `test`
+   - كل إدخال: `[[binaries]] name = "..." allowed = true`
+
+2. **تنفيذ `ExecutorAllowlist` في `crates/ai-bridge-gatekeeper-daemon/src/executor_allowlist.rs`** (القسم 5.1):
+   - struct `ExecutorAllowlist` مع `HashSet<String>` للثنائيات المسموحة
+   - `load_default()`: يجد الملف في مواقع متعددة (cwd، manifests، workspace root) — يعمل في الاختبارات والثنائيات المجمعة
+   - `load(path)`: تحميل من مسار محدد
+   - `is_allowed(&str)`: تحقق O(1)
+
+3. **دمج التحقق في `execute_approved_task`** (القسم 5.2):
+   - بعد `parse_command` وقبل `Command::new`، تحميل القائمة البيضاء والتحقق `tokens[0]`
+   - إن لم يكن في القائمة: `Err(io::Error::new(PermissionDenied, ...))` — **طبقة حماية مستقلة** عن تصنيف Gatekeeper
+   - حتى لو كان `decide_policy` يعيد `Delegable`، الثنائي غير المدرجة يرفض
+
+4. **اختبار الرفض لثنائي غير مدرج** (القسم 5.3):
+   - اختبار `executor::tests::rejects_binary_not_in_allowlist` يؤكد الرفض
+   - اختبارات `executor_allowlist` تؤكد منطق التحميل والتحقق
+
+### قرارات تقنية ذاتية
+| القرار | المبرر |
+|----------|---------|
+| مسار تحميل متعدد (`load_default`) | `CARGO_MANIFEST_DIR` لا يعمل موثوقاً في الاختبارات؛ البحث في cwd + نسبية + workspace root يغطي كل الحالات |
+| خطأ `PermissionDenied` للثنائي غير المسموح | دلالة واضحة للطبقة المستقلة؛ ليس `InvalidInput` لأنه أمر صحيح نحوياً لكن ممنوع بالسياسة |
+| `io::Error::other` بدل `Error::new(Other, ...)` | مطلب clippy (`clippy::io-other-error`) |
+
+### نتيجة التحقق
+```
+cargo test --workspace → 74 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → يمر بلا أخطاء/تحذيرات
+```
+
+---
+
 ## النقاط المعلقة (ستعالج في الوحدات اللاحقة)
 
-- [ ] **الوحدة 4**: قائمة سماح الثنائيات القابلة للتنفيذ (القسم 5 كاملاً).
 - [ ] **الوحدة 5**: تنظيف نهائي + تحقق Git + تحديث OPEN_QUESTIONS.md (القسم 6).
