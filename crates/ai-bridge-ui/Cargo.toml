@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 ai-bridge-channels = { path = "../ai-bridge-channels" }
+ai-bridge-gatekeeper-core = { path = "../ai-bridge-gatekeeper-core" }
+ai-bridge-protocol = { path = "../ai-bridge-protocol" }
 eframe = "0.29"
 egui = "0.29"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "io-util", "net", "sync"] }

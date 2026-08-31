@@ -19,3 +19,5 @@ clarification before proceeding to the next phase.
 - ~~SecureToken distribution: Case B (ملف .token) لـ public_maestro — تم التنفيذ والتحقق~~
 - ~~Executor allowlist: قائمة سماح مستقلة للثنائيات — تم التنفيذ والتحقق~~
 - ~~Sub-chat limit: `sub_chat_limit() = 3` (تم التعديل من 2 إلى 3، الاختبارات محدثة)~~
+- **UI manual plan route**: تم اختيار إرسال خطة التشغيل اليدوية عبر نفس قناة `public_maestro.sock` بصيغة `ExecutionPlan` العادية، لا عبر مسار خاص أو bypass؛ هذا يضمن أن المسار اليدوي هو نفسه المسار الخارجي تماماً، ومنعاً لأي shortcut غير موثق.
+- **Backward-compatible tag policy**: عند عدم وجود وسم `[[AB:...]]` صريح، يبقى تقييم الأوامر مطابق للفحص النصي القديم؛ أما عند وجود وسم واضح، فيُطبّق جدول الرموز المشترك ويُعدّ التصنيف الرمزي هو القيد الأقوى. هذا القرار تمّ توثيقه صراحةً في `criteria.rs` لتجنب افتراضات صامتة.

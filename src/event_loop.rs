@@ -295,7 +295,7 @@ mod tests {
         ExecutionPlan {
             task_id: task_id.to_string(),
             description: "run the test suite".to_string(),
-            commands: vec!["cargo test".to_string()],
+            commands: vec!["[[AB:OPS.TERM.RUN.LOCAL]] cargo test".to_string()],
         }
     }
 
@@ -303,7 +303,7 @@ mod tests {
         ExecutionPlan {
             task_id: task_id.to_string(),
             description: "rotate credentials".to_string(),
-            commands: vec!["echo password=secret".to_string()],
+            commands: vec!["[[AB:OPS.TERM.RUN.LOCAL]] echo password=secret".to_string()],
         }
     }
 
@@ -311,7 +311,7 @@ mod tests {
         ExecutionPlan {
             task_id: task_id.to_string(),
             description: "wipe the disk".to_string(),
-            commands: vec!["dd if=/dev/zero of=/dev/sda bs=1M status=progress".to_string()],
+            commands: vec!["[[AB:OPS.TERM.RUN.LOCAL]] dd if=/dev/zero of=/dev/sda bs=1M status=progress".to_string()],
         }
     }
 

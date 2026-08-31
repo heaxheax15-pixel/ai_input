@@ -14,6 +14,8 @@
 use std::io;
 use tokio::process::Command;
 
+use ai_bridge_gatekeeper_core::safety_guard::{SafetyDecision, SafetyGuard};
+
 use crate::executor_allowlist::ExecutorAllowlist;
 
 /// Parses a command string into the program and its arguments, shell-style.
@@ -50,6 +52,23 @@ fn parse_command(command_str: &str) -> io::Result<Vec<String>> {
 pub async fn execute_approved_task(command_str: &str) -> io::Result<std::process::Output> {
     let tokens = parse_command(command_str)?;
     let binary = &tokens[0];
+
+    let guard = SafetyGuard::new();
+    match guard.evaluate_for_command(command_str) {
+        SafetyDecision::Allow => {}
+        SafetyDecision::Block => {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("command '{}' is blocked by the safety lock", command_str),
+            ));
+        }
+        SafetyDecision::RequireHumanOverride => {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("command '{}' requires explicit human override before execution", command_str),
+            ));
+        }
+    }
 
     // Independent allowlist check — separate from Gatekeeper classification
     let allowlist = ExecutorAllowlist::load_default().map_err(|e| {

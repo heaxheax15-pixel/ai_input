@@ -1,4 +1,4 @@
-use ai_bridge_protocol::ExecutionPlan;
+use ai_bridge_protocol::{ExecutionPlan, Symbol, SymbolClassification};
 use regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,18 +48,13 @@ impl CriteriaSummary {
     }
 }
 
-fn command_text(plan: &ExecutionPlan) -> String {
-    plan.commands.join("\n")
-}
-
 fn contains_pattern(text: &str, pattern: &str) -> bool {
     let re = Regex::new(pattern).unwrap();
     re.is_match(text)
 }
 
-pub fn evaluate_criteria(plan: &ExecutionPlan) -> CriteriaSummary {
-    let text = command_text(plan);
-    let lower = text.to_ascii_lowercase();
+fn evaluate_text_command(command: &str) -> CriteriaSummary {
+    let lower = command.trim().to_ascii_lowercase();
 
     let mut triggered = Vec::new();
 
@@ -69,6 +64,9 @@ pub fn evaluate_criteria(plan: &ExecutionPlan) -> CriteriaSummary {
         "overwrite backups",
         "delete backup",
         "delete backups",
+        "rm -rf /",
+        "rm -rf --no-preserve-root /",
+        "sudo rm -rf /",
         "rm -rf /var/backups",
         "rm -rf /home",
         "rm -rf /tmp",
@@ -193,6 +191,51 @@ pub fn evaluate_criteria(plan: &ExecutionPlan) -> CriteriaSummary {
     } else {
         EvaluationStatus::NonDelegable
     };
+
+    CriteriaSummary { triggered, status }
+}
+
+pub fn evaluate_criteria(plan: &ExecutionPlan) -> CriteriaSummary {
+    let mut triggered = Vec::new();
+    let mut status = EvaluationStatus::Delegable;
+
+    for command in &plan.commands {
+        let (symbol, remaining_command) = Symbol::extract_from_command(command);
+        let text_summary = evaluate_text_command(&remaining_command);
+
+        // Security rule: a command without a valid symbol tag is always treated as
+        // critical. The legacy text scan is only consulted for lines that already
+        // carry an explicit valid symbol tag.
+        let has_valid_tag = command.trim_start().starts_with("[[AB:")
+            && symbol != Symbol::CritUnclassified;
+
+        if !has_valid_tag {
+            status = EvaluationStatus::NonDelegable;
+            continue;
+        }
+
+        let symbol_status = match symbol.classification() {
+            SymbolClassification::Delegable => EvaluationStatus::Delegable,
+            SymbolClassification::Critical => EvaluationStatus::NonDelegable,
+        };
+
+        if symbol_status == EvaluationStatus::NonDelegable || text_summary.status == EvaluationStatus::NonDelegable {
+            status = EvaluationStatus::NonDelegable;
+        }
+
+        for criterion in text_summary.triggered {
+            if !triggered.contains(&criterion) {
+                triggered.push(criterion);
+            }
+        }
+    }
+
+    if triggered.is_empty() && status == EvaluationStatus::Delegable {
+        return CriteriaSummary {
+            triggered: Vec::new(),
+            status: EvaluationStatus::Delegable,
+        };
+    }
 
     CriteriaSummary { triggered, status }
 }
