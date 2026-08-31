@@ -27,7 +27,13 @@ use crate::executor_allowlist::ExecutorAllowlist;
 /// The result is fed straight into [`tokio::process::Command`], which spawns the
 /// binary without invoking a shell.
 fn parse_command(command_str: &str) -> io::Result<Vec<String>> {
-    let tokens = shlex::split(command_str).ok_or_else(|| {
+    let (symbol, remaining) = ai_bridge_protocol::Symbol::extract_from_command(command_str);
+    let working = if symbol == ai_bridge_protocol::Symbol::CritUnclassified {
+        command_str.to_string()
+    } else {
+        remaining
+    };
+    let tokens = shlex::split(&working).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "command has unbalanced quotes")
     })?;
     if tokens.is_empty() {
@@ -125,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn executes_simple_command_and_captures_output() {
-        let output = execute_approved_task("echo hello world")
+        let output = execute_approved_task("[[AB:OPS.TERM.RUN.LOCAL]] echo hello world")
             .await
             .expect("should run");
         assert!(output.status.success());
@@ -135,16 +141,24 @@ mod tests {
     #[tokio::test]
     async fn does_not_interpret_shell_metacharacters() {
         // `;` must be a plain argument, never a command separator.
-        let output = execute_approved_task("echo hi; ls /")
+        let output = execute_approved_task("[[AB:OPS.TERM.RUN.LOCAL]] echo hi; ls /")
             .await
             .expect("should run");
         assert_eq!(String::from_utf8_lossy(&output.stdout), "hi; ls /\n");
 
         // `>` must be a plain argument; it must never redirect into a file.
-        let output = execute_approved_task("echo x > /dev/null")
+        let output = execute_approved_task("[[AB:OPS.TERM.RUN.LOCAL]] echo x > /dev/null")
             .await
             .expect("should run");
         assert_eq!(String::from_utf8_lossy(&output.stdout), "x > /dev/null\n");
+    }
+
+    #[tokio::test]
+    async fn untagged_commands_are_rejected_even_when_seemingly_safe() {
+        let err = execute_approved_task("echo hello")
+            .await
+            .expect_err("untagged commands must be blocked");
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
     }
 
     #[tokio::test]

@@ -66,6 +66,17 @@ impl Symbol {
         }
     }
 
+    pub fn symbol_dictionary_text() -> String {
+        let lines = Self::all().iter().map(|symbol| {
+            let classification = match symbol.classification() {
+                SymbolClassification::Delegable => "Delegable",
+                SymbolClassification::Critical => "Critical",
+            };
+            format!("- {} ({}) — {}", symbol.literal_name(), classification, symbol.description())
+        });
+        format!("Symbol dictionary:\n{}", lines.collect::<Vec<_>>().join("\n"))
+    }
+
     pub fn classification(&self) -> SymbolClassification {
         match self {
             Self::OpsAppOpen
@@ -337,5 +348,16 @@ mod tests {
         let (symbol, remaining) = Symbol::extract_from_command("[[AB:UNKNOWN]] cargo test");
         assert_eq!(symbol, Symbol::CritUnclassified);
         assert_eq!(remaining, "[[AB:UNKNOWN]] cargo test");
+    }
+
+    #[test]
+    fn symbol_dictionary_text_lists_every_declared_symbol() {
+        let text = Symbol::symbol_dictionary_text();
+        for symbol in Symbol::all() {
+            assert!(text.contains(symbol.literal_name()), "missing {} in dictionary", symbol.literal_name());
+            assert!(text.contains(symbol.description()), "missing description for {}", symbol.literal_name());
+        }
+        assert!(text.contains("Delegable"));
+        assert!(text.contains("Critical"));
     }
 }

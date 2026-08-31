@@ -89,16 +89,11 @@ struct ManualCommandRow {
     symbol: Symbol,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SafetyModeUi {
+    #[default]
     Armed,
     Disarmed,
-}
-
-impl Default for SafetyModeUi {
-    fn default() -> Self {
-        Self::Armed
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -126,6 +121,7 @@ pub struct DashboardApp {
     manual_task_description: String,
     manual_commands: Vec<ManualCommandRow>,
     safety_state: SafetyUiState,
+    #[allow(dead_code)]
     safety_lock_mutex: Option<Mutex<()>>,
 }
 
@@ -535,6 +531,11 @@ impl DashboardApp {
         pipe_frame(ui, "MANUAL MAESTRO PLAN", true, |ui| {
             ui.label("Description");
             ui.text_edit_multiline(&mut self.manual_task_description);
+
+            ui.separator();
+            ui.label("Symbol dictionary");
+            ui.code(Symbol::symbol_dictionary_text());
+            ui.separator();
 
             let mut remove_index: Option<usize> = None;
             for index in 0..self.manual_commands.len() {
