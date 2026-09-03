@@ -94,8 +94,8 @@ pub enum ChannelError {
     SocketIo(String),
     #[error("failed to parse JSON payload: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("socket was created for UID {expected}, but peer UID was {actual}")]
-    PeerPidMismatch { expected: u32, actual: u32 },
+    #[error("peer UID {actual} did not match the registered UID {expected} for this channel")]
+    PeerUidMismatch { expected: u32, actual: u32 },
     #[error("message payload contains a forbidden identity field: {field}")]
     ForbiddenField { field: &'static str },
     #[error("failed to access socket path: {0}")]
@@ -252,6 +252,19 @@ impl BridgeSocket {
         &self.secure_token
     }
 
+    /// Accepts a connection and validates the connecting **peer's UID** against
+    /// the UID that bound this socket, using the kernel's `SO_PEERCRED`.
+    ///
+    /// Identity is therefore established at the socket/kernel layer — never via
+    /// any message payload field. Crucially this validates the peer **UID**, not
+    /// its **PID / process id**. The daemon's own PID is never part of the
+    /// comparison, so a legitimate client (a different process running under the
+    /// same UID, e.g. the UI or a Maestro/branch instance) is accepted. The
+    /// per-process distinction within the same UID is provided separately by the
+    /// secure-token handshake, not by a PID comparison.
+    ///
+    /// A peer running under a *different* UID is rejected: unauthorized users
+    /// cannot connect.
     fn accept_stream(&self) -> Result<UnixStream, ChannelError> {
         let (stream, _) = self
             .listener
@@ -259,10 +272,13 @@ impl BridgeSocket {
             .map_err(|err| ChannelError::SocketAccept(err.to_string()))?;
         let raw = getsockopt(&stream, PeerCredentials)
             .map_err(|err| ChannelError::Io(err.to_string()))?;
+        // SO_PEERCRED identity: use the peer's real UID. We deliberately do NOT
+        // read raw.pid(): a peer's PID is by definition different from the
+        // daemon's, and comparing PIDs would reject every legitimate client.
         let actual = raw.uid() as u32;
 
         if actual != self.registered_uid {
-            return Err(ChannelError::PeerPidMismatch {
+            return Err(ChannelError::PeerUidMismatch {
                 expected: self.registered_uid,
                 actual,
             });
@@ -306,9 +322,12 @@ impl BridgeSocket {
         handler(&mut stream)
     }
 
+    /// Low-level helper that asserts two UIDs match, returning the (formerly
+    /// misnamed) UID-mismatch error. `expected` and `actual` are **UIDs**, never
+    /// PIDs.
     pub fn validate_peer_uid(expected: u32, actual: u32) -> Result<(), ChannelError> {
         if expected != actual {
-            Err(ChannelError::PeerPidMismatch { expected, actual })
+            Err(ChannelError::PeerUidMismatch { expected, actual })
         } else {
             Ok(())
         }
@@ -428,7 +447,7 @@ mod tests {
         assert!(BridgeSocket::validate_peer_uid(expected, expected).is_ok());
         assert!(matches!(
             BridgeSocket::validate_peer_uid(expected, expected + 1),
-            Err(ChannelError::PeerPidMismatch {
+            Err(ChannelError::PeerUidMismatch {
                 expected: _,
                 actual: _
             })
