@@ -1,4 +1,5 @@
 use ai_bridge_gatekeeper_core::policy::decide_policy;
+use ai_bridge_hand_eye::allowlist::Allowlist;
 use ai_bridge_protocol::{ExecutionPlan, Symbol};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::admin_panel::AdminPanel;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -23,6 +26,9 @@ pub enum GatekeeperEvent {
     TaskResolved {
         task_id: String,
         approved: bool,
+    },
+    SafetyStateUpdate {
+        armed: bool,
     },
 }
 
@@ -74,6 +80,10 @@ pub enum OutboundEvent {
         description: String,
         commands: Vec<String>,
     },
+    SafetyArm { #[serde(rename = "type")] ty: String }, // { "type": "safety_arm" }
+    SafetyDisarm { #[serde(rename = "type")] ty: String, reason: String }, // { "type": "safety_disarm", "reason": "..." }
+    SafetyOverride { #[serde(rename = "type")] ty: String, task_id: String, reason: String },
+    DirectMessage { #[serde(rename = "type")] ty: String, text: String },
 }
 
 #[derive(PartialEq)]
@@ -81,6 +91,7 @@ enum Tab {
     ControlCenter,
     SubChatOps,
     ConfigPrompts,
+    Admin,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +134,7 @@ pub struct DashboardApp {
     safety_state: SafetyUiState,
     #[allow(dead_code)]
     safety_lock_mutex: Option<Mutex<()>>,
+    admin_panel: AdminPanel,
 }
 
 impl DashboardApp {
@@ -157,6 +169,7 @@ impl DashboardApp {
                 ],
             },
             safety_lock_mutex: None,
+            admin_panel: AdminPanel::new(),
         }
     }
 
@@ -229,6 +242,65 @@ impl DashboardApp {
             .unwrap_or(BranchRole::None)
     }
 
+    fn get_allowed_app_ids(&self) -> Vec<String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let candidate_paths = [
+            root.join("config/allowlist.toml"),
+            PathBuf::from("config/allowlist.toml"),
+            PathBuf::from("../config/allowlist.toml"),
+        ];
+        
+        for path in candidate_paths.iter() {
+            if let Ok(allowlist) = Allowlist::load(path) {
+                return allowlist.apps
+                    .iter()
+                    .filter(|rule| rule.allowed)
+                    .map(|rule| rule.app_id.clone())
+                    .collect();
+            }
+        }
+        
+        // Fallback to defaults if no allowlist found
+        vec![
+            "org.gnome.Terminal".to_string(),
+            "org.mozilla.firefox".to_string(),
+            "org.gnome.Nautilus".to_string(),
+        ]
+    }
+
+    fn load_allowlist_config(&self) -> Result<String, String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let candidate_paths = [
+            root.join("config/allowlist.toml"),
+            PathBuf::from("config/allowlist.toml"),
+            PathBuf::from("../config/allowlist.toml"),
+        ];
+        
+        for path in candidate_paths.iter() {
+            if path.exists() {
+                return fs::read_to_string(path)
+                    .map_err(|e| format!("Failed to read allowlist: {}", e));
+            }
+        }
+        
+        Err("Allowlist file not found".to_string())
+    }
+
+    fn save_allowlist_config(&self) -> Result<(), String> {
+        // Validate TOML before saving
+        toml::from_str::<toml::Value>(&self.allowlist_input)
+            .map_err(|e| format!("Invalid TOML: {}", e))?;
+        
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let path = root.join("config/allowlist.toml");
+        
+        fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        
+        fs::write(&path, &self.allowlist_input)
+            .map_err(|e| format!("Failed to write allowlist file: {}", e))
+    }
+
     fn set_role_for_app(&mut self, app_id: String, role: BranchRole) {
         let message = app_id.clone();
         match role {
@@ -248,16 +320,13 @@ impl DashboardApp {
 
     fn render_role_assignment_panel(&mut self, ui: &mut egui::Ui) {
         pipe_frame(ui, "ROLE ASSIGNMENT", true, |ui| {
-            let app_ids = [
-                "org.gnome.Terminal",
-                "org.mozilla.firefox",
-                "org.gnome.Nautilus",
-            ];
+            // Load app IDs from real allowlist
+            let app_ids = self.get_allowed_app_ids();
 
             for app_id in app_ids {
-                let current_role = self.role_options_for_app(app_id);
+                let current_role = self.role_options_for_app(&app_id);
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(format!("{app_id}:"));
+                    ui.label(format!("{}:", app_id));
                     for candidate in [
                         (BranchRole::None, "None"),
                         (BranchRole::Maestro, "Maestro"),
@@ -269,7 +338,7 @@ impl DashboardApp {
                             .selectable_label(is_selected, candidate.1)
                             .clicked()
                         {
-                            self.set_role_for_app(app_id.to_string(), candidate.0);
+                            self.set_role_for_app(app_id.clone(), candidate.0);
                         }
                     }
                 });
@@ -292,7 +361,11 @@ impl DashboardApp {
                 if ui.button("Send").clicked() {
                     match self.role_assignments.current_maestro() {
                         Some(_) => {
-                            self.ui_message = format!("Message sent as Maestro: {}", self.send_message);
+                            let _ = self.tx_out.send(OutboundEvent::DirectMessage {
+                                ty: "direct_message".to_string(),
+                                text: self.send_message.clone(),
+                            });
+                            self.ui_message = format!("Message sent to Maestro: {}", self.send_message);
                             self.send_message.clear();
                         }
                         None => {
@@ -464,18 +537,13 @@ impl DashboardApp {
 
             ui.horizontal(|ui| {
                 if ui.button("Arm Safety").clicked() {
-                    self.safety_state.mode = SafetyModeUi::Armed;
-                    self.safety_state.audit_entries.push(
-                        format!("{} :: user armed safety lock", chrono_or_now()),
-                    );
-                    self.ui_message = "Safety lock armed by user".to_string();
+                    let _ = self.tx_out.send(OutboundEvent::SafetyArm { ty: "safety_arm".to_string() });
+                    self.ui_message = "Safety Arm command sent to daemon".to_string();
                 }
                 if ui.button("Disarm Safety").clicked() {
-                    self.safety_state.mode = SafetyModeUi::Disarmed;
-                    self.safety_state.audit_entries.push(
-                        format!("{} :: user disarmed safety lock", chrono_or_now()),
-                    );
-                    self.ui_message = "Safety lock disarmed by user".to_string();
+                    let reason = self.safety_state.override_reason.clone();
+                    let _ = self.tx_out.send(OutboundEvent::SafetyDisarm { ty: "safety_disarm".to_string(), reason });
+                    self.ui_message = "Safety Disarm command sent to daemon".to_string();
                 }
             });
 
@@ -486,12 +554,19 @@ impl DashboardApp {
                 if self.safety_state.override_reason.trim().is_empty() {
                     self.ui_message = "Override requires a clear human reason".to_string();
                 } else {
-                    self.safety_state.audit_entries.push(format!(
-                        "{} :: override granted :: {}",
-                        chrono_or_now(),
-                        self.safety_state.override_reason
-                    ));
-                    self.ui_message = "Human override logged and requires the same secure execution path".to_string();
+                    let task_id = format!(
+                        "override-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    );
+                    let _ = self.tx_out.send(OutboundEvent::SafetyOverride {
+                        ty: "safety_override".to_string(),
+                        task_id,
+                        reason: self.safety_state.override_reason.clone(),
+                    });
+                    self.ui_message = "Human override request sent to daemon".to_string();
                     self.safety_state.override_reason.clear();
                 }
             }
@@ -508,6 +583,31 @@ impl DashboardApp {
         pipe_frame(ui, "PIPELINE CONFIGURATION & ALLOWLIST", true, |ui| {
             ui.label("Allowlist Configuration (allowlist.toml)");
             ui.text_edit_multiline(&mut self.allowlist_input);
+            
+            ui.horizontal(|ui| {
+                if ui.button("Save allowlist").clicked() {
+                    match self.save_allowlist_config() {
+                        Ok(_) => {
+                            self.ui_message = "Allowlist saved successfully".to_string();
+                        }
+                        Err(e) => {
+                            self.ui_message = format!("Failed to save allowlist: {}", e);
+                        }
+                    }
+                }
+                if ui.button("Reload from file").clicked() {
+                    match self.load_allowlist_config() {
+                        Ok(content) => {
+                            self.allowlist_input = content;
+                            self.ui_message = "Allowlist reloaded from file".to_string();
+                        }
+                        Err(e) => {
+                            self.ui_message = format!("Failed to reload allowlist: {}", e);
+                        }
+                    }
+                }
+            });
+            
             ui.separator();
             ui.label("System Prompts");
             ui.text_edit_multiline(&mut self.system_prompt);
@@ -724,6 +824,17 @@ impl eframe::App for DashboardApp {
                     GatekeeperEvent::TaskResolved { task_id, .. } => {
                         self.pending_tasks.retain(|t| t.task_id != task_id);
                     }
+                    GatekeeperEvent::SafetyStateUpdate { armed } => {
+                        self.safety_state.mode = if armed {
+                            SafetyModeUi::Armed
+                        } else {
+                            SafetyModeUi::Disarmed
+                        };
+                        let status = if armed { "Armed" } else { "Disarmed" };
+                        self.safety_state.audit_entries.push(
+                            format!("{} :: safety lock state updated from daemon: {}", chrono_or_now(), status),
+                        );
+                    }
                 },
             }
         }
@@ -751,6 +862,11 @@ impl eframe::App for DashboardApp {
                         Tab::ConfigPrompts,
                         "╔═ 3. Configuration ═╗",
                     );
+                    ui.selectable_value(
+                        &mut self.current_tab,
+                        Tab::Admin,
+                        "╔═ 4. Admin ═╗",
+                    );
                 });
             });
 
@@ -758,6 +874,7 @@ impl eframe::App for DashboardApp {
             Tab::ControlCenter => self.render_control_center(ui),
             Tab::SubChatOps => self.render_subchat_ops(ui),
             Tab::ConfigPrompts => self.render_config_prompts(ui),
+            Tab::Admin => self.admin_panel.render(ui),
         });
 
         ctx.request_repaint_after(Duration::from_millis(100));

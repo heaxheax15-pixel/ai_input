@@ -284,14 +284,12 @@ pub mod real {
         Err(PortalError::UnsupportedAction)
     }
 
-    pub async fn capture_and_inject_failure_context(
+    pub async fn inject_text_and_send(
         allowlist: &Allowlist,
-        failed_app_id: &str,
-        new_maestro_app_id: &str,
-        failure_reason: &str,
-        elapsed: Duration,
+        target_app_id: &str,
+        text: &str,
     ) -> Result<(), PortalError> {
-        authorize_injection(allowlist, new_maestro_app_id)?;
+        authorize_injection(allowlist, target_app_id)?;
 
         let proxy = RemoteDesktop::new()
             .await
@@ -315,7 +313,6 @@ pub mod real {
             .await
             .map_err(|e| PortalError::Dbus(e.to_string()))?;
 
-        let text = build_failure_status_text(failed_app_id, failure_reason, elapsed);
         for ch in text.chars() {
             if ch == '\n' {
                 inject_keysym(&proxy, &session, 0xff0d).await?;
@@ -330,6 +327,17 @@ pub mod real {
         }
 
         Ok(())
+    }
+
+    pub async fn capture_and_inject_failure_context(
+        allowlist: &Allowlist,
+        failed_app_id: &str,
+        new_maestro_app_id: &str,
+        failure_reason: &str,
+        elapsed: Duration,
+    ) -> Result<(), PortalError> {
+        let text = build_failure_status_text(failed_app_id, failure_reason, elapsed);
+        Self::inject_text_and_send(allowlist, new_maestro_app_id, &text).await
     }
 
     /// Eye: opens a ScreenCast session used exclusively for image capture or

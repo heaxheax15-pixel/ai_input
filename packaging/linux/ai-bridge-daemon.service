@@ -1,0 +1,21 @@
+[Unit]
+Description=AI-Bridge Gatekeeper Daemon (policy/config gatekeeper)
+After=network.target
+
+[Service]
+Type=simple
+# The daemon is launched from its dedicated install directory.
+ExecStart=/opt/ai-bridge/ai-bridge
+Restart=on-failure
+RestartSec=2
+# Run as the installing user; sockets live under the runtime socket dir.
+User=%USER%
+Group=%GROUP%
+Environment=AI_BRIDGE_CONFIG_DIR=/etc/ai-bridge
+# Refuse to let this service write arbitrary binaries: give it a scoped root.
+ProtectSystem=strict
+ProtectHome=false
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use ai_bridge::config::default_runtime_config;
 use ai_bridge::event_loop::{route_branch_request, BranchRegistry, GatekeeperVerdict, PendingPlans};
 use ai_bridge_channels::{ChannelError, ChannelManager, ChannelName};
+use ai_bridge_gatekeeper_core::safety_guard::SafetyGuard;
 use ai_bridge_gatekeeper_daemon::executor::execute_approved_task;
 use ai_bridge_hand_eye::allowlist::Allowlist;
 use ai_bridge_protocol::{
@@ -116,6 +117,7 @@ async fn run_event_loop(
 
     let registry = Arc::new(Mutex::new(BranchRegistry::new(ROOT_TASK_ID)));
     let pending = Arc::new(Mutex::new(PendingPlans::new()));
+    let safety_guard = Arc::new(Mutex::new(SafetyGuard::new()));
 
     // Background task: periodically check for Delegable timeouts and execute
     let pending_clone = Arc::clone(&pending);
@@ -152,6 +154,7 @@ async fn run_event_loop(
         let mgr = Arc::clone(&manager);
         let registry = Arc::clone(&registry);
         let pending = Arc::clone(&pending);
+        let safety_guard = Arc::clone(&safety_guard);
 
         let handle = tokio::spawn(async move {
             let socket_chan = chan;
@@ -159,6 +162,7 @@ async fn run_event_loop(
                 let mgr = Arc::clone(&mgr);
                 let reg = Arc::clone(&registry);
                 let pend = Arc::clone(&pending);
+                let sg = Arc::clone(&safety_guard);
 
                 let res: Result<Option<(String, ExecutionPlan)>, ChannelError> =
                     tokio::task::spawn_blocking(move || {
@@ -171,7 +175,7 @@ async fn run_event_loop(
 
                             match socket_chan {
                                 ChannelName::PublicMaestro => {
-                                    handle_maestro_message(&mut pend.lock().unwrap(), &buf, stream)
+                                    handle_maestro_message(&mut pend.lock().unwrap(), &mut sg.lock().unwrap(), &buf, stream)
                                 }
                                 ChannelName::PrivateA | ChannelName::PrivateB => {
                                     handle_branch_message(
@@ -301,10 +305,12 @@ fn handle_branch_message(
     Ok(())
 }
 
-/// Handles all public_maestro messages: ExecutionPlan (submit), TaskQuery, TaskResolved.
+/// Handles all public_maestro messages: ExecutionPlan (submit), TaskQuery, TaskResolved,
+/// and Safety Lock control messages (Arm, Disarm, Override, DirectMessage).
 /// Returns Some((task_id, plan)) when immediate execution is required (AutoApproved or owner-approved).
 fn handle_maestro_message(
     pending: &mut PendingPlans,
+    safety_guard: &mut SafetyGuard,
     raw: &str,
     stream: &mut std::os::unix::net::UnixStream,
 ) -> Result<Option<(String, ExecutionPlan)>, ChannelError> {
@@ -453,6 +459,51 @@ fn handle_maestro_message(
                     .map_err(|e| ChannelError::Io(e.to_string()))?;
                 return Ok(None);
             }
+        }
+    }
+
+    // 5. Safety Lock Control Events
+    if let Some(t) = v.get("type").and_then(|x| x.as_str()) {
+        match t {
+            "safety_arm" => {
+                safety_guard.arm("ui_user");
+                let ack = serde_json::json!({"status": "armed"});
+                stream
+                    .write_all(&serde_json::to_vec(&ack).map_err(ChannelError::Json)?)
+                    .map_err(|e| ChannelError::Io(e.to_string()))?;
+                println!("[SAFETY] lock armed via UI");
+                return Ok(None);
+            }
+            "safety_disarm" => {
+                let reason = v.get("reason").and_then(|r| r.as_str()).unwrap_or("no reason provided");
+                safety_guard.disarm("ui_user", reason);
+                let ack = serde_json::json!({"status": "disarmed"});
+                stream
+                    .write_all(&serde_json::to_vec(&ack).map_err(ChannelError::Json)?)
+                    .map_err(|e| ChannelError::Io(e.to_string()))?;
+                println!("[SAFETY] lock disarmed via UI: {}", reason);
+                return Ok(None);
+            }
+            "safety_override" => {
+                let task_id = v.get("task_id").and_then(|tid| tid.as_str()).unwrap_or("unknown");
+                let reason = v.get("reason").and_then(|r| r.as_str()).unwrap_or("no reason provided");
+                let ack = serde_json::json!({"status": "override_logged", "task_id": task_id});
+                stream
+                    .write_all(&serde_json::to_vec(&ack).map_err(ChannelError::Json)?)
+                    .map_err(|e| ChannelError::Io(e.to_string()))?;
+                println!("[SAFETY] override requested for task {}: {}", task_id, reason);
+                return Ok(None);
+            }
+            "direct_message" => {
+                let text = v.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                let ack = serde_json::json!({"status": "message_received", "text": text});
+                stream
+                    .write_all(&serde_json::to_vec(&ack).map_err(ChannelError::Json)?)
+                    .map_err(|e| ChannelError::Io(e.to_string()))?;
+                println!("[MAESTRO] direct message from UI: {}", text);
+                return Ok(None);
+            }
+            _ => {}
         }
     }
 

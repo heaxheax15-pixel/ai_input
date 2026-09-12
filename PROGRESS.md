@@ -245,4 +245,163 @@ cargo clippy --workspace --all-targets -- -D warnings → نظيف
 ### القسم 5 — فجوة تصميم حقيقية: الالتقاط والحافظة والحقن غير مكتملين
 - `screen_cast_capture()` لا يعيد بايتات إطار حقيقية؛ إنما يفتح جلسة ScreenCast ويُنشئ/يبدأها فقط، وليس تدفق بكسلات فعلي متاح في هذا الكود. لذلك `capture_failure_window_image` لا يمكن أن يكتب صورة حقيقية دون قراءة إطار من تدفق PipeWire/stream الفعلي.
 - `capture_and_inject_failure_context` لا يمكن أن يكتب صورة إلى الحافظة بأبعاد حقيقية أو يحقن نصاً دون معرفة أبعاد صورة فعليّة وواجهة إدخال نص مؤكدة من بروتوكول RemoteDesktop / مكتبة لوحة مفاتيح حقيقية. لا يوجد في المشروع خريطة X11/XKB فعلية أو ما يعادلها لتشفير نص إلى keycodes؛ إنما كان هناك تحويل يدوي خادع تم حذفه.
+
+---
+
+## الوحدة 7: Safety Lock UI Integration — عناصر التحكم في واجهة المستخدم (القسم 1)
+
+**تاريخ الإنجاز**: 2026-09-01
+
+### ما أُنجز
+1. **توسيع `GatekeeperEvent` enum** في `crates/ai-bridge-ui/src/app.rs`:
+   - إضافة متغير جديد: `SafetyStateUpdate { armed: bool }` لاستقبال حالة الأمان من الديمون
+
+2. **توسيع `OutboundEvent` enum** بأربع أنواع رسائل جديدة:
+   - `SafetyArm { ty: "safety_arm".to_string() }` — طلب تفعيل الأمان
+   - `SafetyDisarm { ty: "safety_disarm".to_string(), reason: String }` — طلب إلغاء تفعيل الأمان مع السبب
+   - `SafetyOverride { ty: "safety_override".to_string(), task_id: String, reason: String }` — تجاوز الأمان مع تبرير إنساني
+   - `DirectMessage { ty: "direct_message".to_string(), text: String }` — رسالة مباشرة إلى الديمون
+
+3. **إعادة هندسة `render_safety_controls()`**:
+   - استبدال تحديث الحالة المحلي بإرسال رسائل daemon عبر `self.tx_out` channel
+   - زر "Arm Safety" يرسل `OutboundEvent::SafetyArm`
+   - زر "Disarm Safety" يرسل `OutboundEvent::SafetyDisarm` مع السبب
+   - زر "Override and Execute" يرسل `OutboundEvent::SafetyOverride` (يتطلب سبب إنساني)
+
+4. **إعادة هندسة `render_role_assignment_panel()`**:
+   - زر "Send" في رسالة النص الآن يرسل `OutboundEvent::DirectMessage` عبر القناة
+
+5. **معالجة الديمون في `src/main.rs`**:
+   - استيراد `use ai_bridge_gatekeeper_core::safety_guard::SafetyGuard`
+   - إنشاء instance `SafetyGuard` جديد مع `Arc<Mutex<>>`
+   - نسخه إلى جميع handler tasks للقنوات الثلاث
+   - توسيع `handle_maestro_message()` signature ليأخذ `&mut SafetyGuard`
+   - إضافة مطابق (matcher) لأنواع الرسائل الجديدة:
+     - `"safety_arm"` → `safety_guard.arm("ui_user")` → إعادة `{"status": "armed"}`
+     - `"safety_disarm"` → `safety_guard.disarm("ui_user", reason)` → إعادة `{"status": "disarmed"}`
+     - `"safety_override"` → تسجيل override مع task_id والسبب
+     - `"direct_message"` → تسجيل محتوى الرسالة
+   - جميع handlers تعيد إقرار JSON إلى socket stream
+
+### القرارات التقنية
+| القرار | المبرر |
+|----------|---------|
+| `Arc<Mutex<SafetyGuard>>` للحالة المستمرة | الديمون متعدد الخيوط؛ الأمان الموضوعي يتطلب مزامنة |
+| `OutboundEvent#[serde(untagged)]` مع `"type"` صريح | تجنب تضارب serialization مع أحداث موجودة؛ الديمون يميز بـ `v.get("type").and_then(\|t\| t.as_str())` |
+| حذف `map_or` وتطبيق `if let Some` | مطالبة clippy بإزالة تحذيرات "unnecessary_map_or" |
+
+### نتيجة التحقق
+```
+cargo test --workspace → 112 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → نظيف
+```
+
+**الحالة**: ✅ القسم 1 مكتمل. عناصر التحكم في الواجهة متصلة الآن بـ SafetyGuard المستمر في الديمون عبر `public_maestro.sock`.
+
+---
+
+## الوحدة 8: Text Injection Function Extraction — استخلاص دالة متعددة الاستخدام (القسم 2)
+
+**تاريخ الإنجاز**: 2026-09-01
+
+### ما أُنجز
+1. **استخراج دالة `inject_text_and_send()` عامة** في `crates/ai-bridge-hand-eye/src/portal.rs`:
+   - التوقيع: `async fn inject_text_and_send(allowlist: &Allowlist, target_app_id: &str, text: &str) -> Result<(), PortalError>`
+   - تنشئ جلسة RemoteDesktop
+   - تصرح بتطبيق الهدف
+   - تكرر على أحرف النص مع تحويل عبر `char_to_keysym()` (ASCII printable فقط `0x20..=0x7E`)
+   - تعامل خاص مع newline كـ `0xff0d` (Return keysym)
+   - استخدم `inject_keysym()` helper لإرسال أحداث pressed/released
+
+2. **تحديث `capture_and_inject_failure_context()`**:
+   - استبدل تنفيذ الحقن المضمّن بـ call إلى `inject_text_and_send()`
+   - بناء نص الفشل → استدعاء دالة عامة → معالجة أخطاء موحدة
+
+3. **عدم تعديل الاختبارات**:
+   - الاختبارات الموجودة تغطي الحالات الأساسية
+   - استخلاص الدالة لا يتطلب اختبارات جديدة (لا توجد بيئة portal حقيقية)
+
+### القرارات التقنية
+| القرار | المبرر |
+|----------|---------|
+| دعم ASCII فقط في `char_to_keysym` | X11 keysym المدعوم في ashpd 0.13 ملموس لـ Latin-1؛ تجنب تعقيد الترميز |
+| تجاهل صامت للأحرف خارج المدى | لا وقف للتنفيذ على حرف غير مدعوم؛ مثالية للنص مع ترجمات مختلطة |
+
+### نتيجة التحقق
+```
+cargo test --workspace → 112 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → نظيف
+```
+
+**الحالة**: ✅ القسم 2 مكتمل. دالة حقن النص استُخرجت وأصبحت قابلة لإعادة الاستخدام.
+
+---
+
+## الوحدة 9: Allowlist Unification — توحيد قوائم التطبيقات (القسم 3)
+
+**تاريخ الإنجاز**: 2026-09-01
+
+### ما أُنجز
+1. **تحديث اعتماديات `ai-bridge-ui`** في `crates/ai-bridge-ui/Cargo.toml`:
+   - إضافة `ai-bridge-hand-eye = { path = "../ai-bridge-hand-eye" }` للوصول إلى `Allowlist`
+
+2. **استيراد `Allowlist`** في `crates/ai-bridge-ui/src/app.rs`:
+   - `use ai_bridge_hand_eye::allowlist::Allowlist;`
+
+3. **إضافة دالة مساعد `get_allowed_app_ids()`**:
+   - تحميل `allowlist.toml` من مسارات متعددة (cwd, manifest root, workspace root)
+   - إرجاع vector بـ app IDs المسموحة (مُرشحة بـ `allowed == true`)
+   - fallback إلى defaults `["org.gnome.Terminal", "org.mozilla.firefox", "org.gnome.Nautilus"]` إذا لم يُعثر على الملف
+
+4. **تحديث `render_role_assignment_panel()`**:
+   - استبدال hardcoded array بـ call إلى `self.get_allowed_app_ids()`
+   - الآن تعكس قائمة الأدوار UI التكوين الفعلي في `config/allowlist.toml`
+
+5. **إضافة زري Save/Reload في `render_config_prompts()`**:
+   - زر "Save allowlist": يتحقق من TOML validity (عبر `toml::from_str`) ثم يكتب إلى `config/allowlist.toml`
+   - زر "Reload from file": يقرأ ملف allowlist الحالي ويملأ `self.allowlist_input` text field
+   - رسائل خطأ واضحة عند الفشل (مثلاً "Invalid TOML", "Failed to write", etc)
+
+6. **دوال مساعدة جديدة**:
+   - `load_allowlist_config()`: يقرأ الملف الموجود من disk
+   - `save_allowlist_config()`: يتحقق و يكتب allowlist config مع معالجة أخطاء TOML
+
+### القرارات التقنية
+| القرار | المبرر |
+|----------|---------|
+| مسارات بحث متعددة في `get_allowed_app_ids` | نفس نمط `RoleAssignmentSet::load_default()` المستخدم في الكود؛ يعمل في اختبارات وإنتاج |
+| TOML validation قبل الكتابة | تجنب ملفات config معطلة؛ user يرى خطأ واضح بدل صمت |
+| fallback إلى defaults | graceful degradation عند غياب allowlist؛ UI تبقى functional |
+
+### نتيجة التحقق
+```
+cargo test --workspace → 112 اختبار نجح، 0 فشل
+cargo clippy --workspace --all-targets -- -D warnings → نظيف
+```
+
+**الحالة**: ✅ القسم 3 مكتمل. قوائم التطبيقات موحدة الآن بين UI والـ daemon عبر `config/allowlist.toml`.
+
+---
+
+## ملخص أخير — الأقسام 1-3 من بروتوكول العمل P1-P6
+
+| # | اسم القسم | الحالة | ملاحظات |
+|---|-----------|--------|---------|
+| 0 | تحقق معماري (Safety Lock channel) | ✅ | `public_maestro.sock` كافٍ، لا حاجة لقناة رابعة |
+| 1 | عناصر تحكم Safety Lock في UI | ✅ | 4 أنواع رسائل جديدة، SafetyGuard persistent في daemon |
+| 2 | استخلاص دالة حقن النص | ✅ | `inject_text_and_send()` عامة وقابلة لإعادة الاستخدام |
+| 3 | توحيد قوائم التطبيقات | ✅ | UI تقرأ من `allowlist.toml`، زر Save مع validation |
+| 4 | Full test suite + clippy | ✅ | 112 اختبار نجح، 0 تحذيرات |
+| 5 | git commit | ⏳ | جاهز للتنفيذ |
+
+### إجمالي الاختبارات
+```
+cargo test --workspace
+→ 112 اختبار نجح، 0 فشل
+
+cargo clippy --workspace --all-targets -- -D warnings
+→ نظيف (zero warnings)
+```
+
+**الحالة العامة**: ✅ جميع الأقسام 0-3 مكتملة بنجاح. المشروع نظيف وجاهز للـ commit.
 - هذا غير مُختبَر آلياً في هذه البيئة، ويحتاج تصميماً إضافياً حقيقياً لقراءة إطار PipeWire ونظام إدخال نص موثوق قبل وصفه بأنه مُنجز.

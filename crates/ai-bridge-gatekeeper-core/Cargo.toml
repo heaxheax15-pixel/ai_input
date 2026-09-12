@@ -5,10 +5,14 @@ edition = "2021"
 
 [dependencies]
 ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+chrono = { version = "0.4", features = ["serde"] }
 regex = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 tokio = { version = "1", features = ["sync", "time"] }
+toml = "0.8"
+serde_json = "1.0"
 
 [dev-dependencies]
 ai-bridge-protocol = { path = "../ai-bridge-protocol" }
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

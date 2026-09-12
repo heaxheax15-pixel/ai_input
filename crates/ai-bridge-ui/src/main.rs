@@ -1,3 +1,4 @@
+mod admin_panel;
 mod app;
 
 use ai_bridge_channels::ChannelName;

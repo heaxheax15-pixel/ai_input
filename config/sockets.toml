@@ -1,0 +1,23 @@
+# ai-bridge channel / socket configuration.
+#
+# The UI may edit socket paths and file permission bits ONLY. The identity
+# verification (SO_PEERCRED PID -> socket binding) is enforced in code, not
+# config, and is not editable from the GUI. Any path or permission change
+# requires a daemon restart (sockets are bound at startup).
+#
+# permissions is an octal string such as "0700" (dir) or "0600" (file).
+
+[[sockets]]
+name = "private_a"
+path = "private_a.sock"
+permissions = "0600"
+
+[[sockets]]
+name = "private_b"
+path = "private_b.sock"
+permissions = "0600"
+
+[[sockets]]
+name = "public_maestro"
+path = "public_maestro.sock"
+permissions = "0600"

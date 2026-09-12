@@ -1,0 +1,103 @@
+# ai-bridge safety criteria configuration.
+#
+# These are the keyword/pattern trigger lists used by criteria.rs to classify
+# a command as NonDelegable. They are the historical hardcoded defaults, now
+# versioned as editable config. An operator may add/remove trigger patterns.
+#
+# Each [[criteria]] block selects a category and its list of patterns.
+# Patterns are regular expressions applied to the lowercased command text.
+#
+# SECURITY: relaxing these patterns (removing triggers) lowers the security
+# posture, so edits here are flagged in the UI and recorded in the audit log.
+# The daemon must be restarted for changes to take effect.
+
+[[criteria]]
+category = "irreversibility"
+patterns = [
+    "permanent delete",
+    "overwrite backup",
+    "overwrite backups",
+    "delete backup",
+    "delete backups",
+    "rm -rf /",
+    "rm -rf --no-preserve-root /",
+    "sudo rm -rf /",
+    "rm -rf /var/backups",
+    "rm -rf /home",
+    "rm -rf /tmp",
+    "rm -rf /usr",
+    "rm -rf /etc",
+    "dd if=/dev/zero",
+    "dd if = /dev/zero",
+    "wipefs",
+    "mkfs",
+]
+
+[[criteria]]
+category = "system_security"
+patterns = [
+    "sudoers",
+    "/etc/sudoers",
+    "iptables",
+    "ufw",
+    "firewall",
+    "chmod\\s+\\d+\\s+.*(/etc|/usr|/bin|/sbin|/opt)",
+    "chown\\s+.*(root|sudo)",
+    "useradd|usermod|passwd",
+    "systemctl\\s+(stop|disable|restart)",
+]
+
+[[criteria]]
+category = "secrets"
+patterns = [
+    "password",
+    "passwd",
+    "ssh\\s+-i",
+    "id_rsa",
+    "api[_ -]?token",
+    "authorization: bearer",
+    "secret",
+    "private[_ -]?key",
+    "aws secret access key",
+]
+
+[[criteria]]
+category = "exfiltration"
+patterns = [
+    "curl\\s+.*(\\|\\s*sh|--upload|--data|--form)",
+    "scp\\s+",
+    "rsync\\s+.*(ssh|remote)",
+    "git\\s+push",
+    "mail\\s+-s",
+    "sendmail",
+    "email.*(send|attach)",
+    "upload.*(file|archive|logs)",
+]
+
+[[criteria]]
+category = "financial"
+patterns = [
+    "transfer.*money",
+    "bank",
+    "wire transfer",
+    "paypal",
+    "stripe",
+    "invoice",
+    "charge",
+    "payment",
+    "currency",
+]
+
+[[criteria]]
+category = "third_party"
+patterns = [
+    "post\\s+.*(tweet|message|announcement|comment)",
+    "twitter",
+    "x\\.com",
+    "discord",
+    "slack",
+    "linkedin",
+    "facebook",
+    "reddit",
+    "telegram",
+]

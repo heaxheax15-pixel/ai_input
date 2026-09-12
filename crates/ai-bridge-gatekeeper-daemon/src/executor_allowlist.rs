@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -19,17 +19,28 @@ pub enum ExecutorAllowlistError {
     Read { path: PathBuf, #[source] source: std::io::Error },
     #[error("failed to parse allowlist TOML: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("failed to serialize allowlist TOML: {0}")]
+    Serialize(#[from] toml::ser::Error),
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct AllowlistConfig {
-    binaries: Vec<BinaryEntry>,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AllowlistConfig {
+    pub binaries: Vec<BinaryEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct BinaryEntry {
-    name: String,
-    allowed: bool,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BinaryEntry {
+    pub name: String,
+    pub allowed: bool,
+    /// Optional absolute path to the binary. Informational for now; when
+    /// present, operators can validate that the path resolves to the binary.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Optional argument restrictions. Informational: enforcement stays
+    /// name-based (`tokens[0]`) to guarantee the historical allowlist
+    /// semantics until explicitly upgraded.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 /// Allowlist of executable binaries (tokens[0] after shlex::split).
@@ -96,6 +107,18 @@ impl ExecutorAllowlist {
     /// Check if a binary name (tokens[0]) is allowed to execute.
     pub fn is_allowed(&self, binary: &str) -> bool {
         self.allowed.contains(binary)
+    }
+}
+
+impl AllowlistConfig {
+    /// Parse a full allowlist config (including path/args metadata) from TOML.
+    pub fn parse(raw: &str) -> Result<Self, ExecutorAllowlistError> {
+        Ok(toml::from_str(raw)?)
+    }
+
+    /// Serialize this config back to TOML (round-trips path/args metadata).
+    pub fn to_toml(&self) -> Result<String, ExecutorAllowlistError> {
+        Ok(toml::to_string(self)?)
     }
 }
 

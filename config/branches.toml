@@ -1,0 +1,15 @@
+# ai-bridge subchat / branch configuration.
+#
+# Adjusts branch A/B behavior: the per-task sub-chat limit and whether the
+# master context is merged by default. `call_index` behavior is derived from
+# the sub-chat counter and cannot be overridden to be non-monotonic.
+
+[[branches]]
+name = "A"
+sub_chat_limit = 3
+context_enabled = true
+
+[[branches]]
+name = "B"
+sub_chat_limit = 3
+context_enabled = true

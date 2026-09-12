@@ -1,0 +1,152 @@
+# ai-bridge symbol & policy configuration.
+#
+# This file lets an authorized operator edit, for EXISTING symbols only:
+#   - the Delegable/NonDelegable classification mapping
+#   - the auto-approval timing window (in seconds) for Delegable tasks
+#
+# SECURITY BOUNDARY: the Symbol enum itself is compiled Rust; the GUI cannot
+# create arbitrary new symbols. Symbols whose literal name is CRIT.* may never
+# be reclassified as "delegable" — validation rejects any such attempt.
+#
+# NOTE: The daemon must be restarted ("Apply & Restart") for changes here to
+# take effect. Changes are validated by dry-run before being applied.
+
+[[symbols]]
+name = "OPS.APP.OPEN"
+classification = "delegable"
+description = "Open an application window or first launcher action."
+
+[[symbols]]
+name = "OPS.APP.BROWSE"
+classification = "delegable"
+description = "Browse local or remote application content without destructive effects."
+
+[[symbols]]
+name = "OPS.FILE.CREATE"
+classification = "delegable"
+description = "Create a new file or directory in a scoped workspace."
+
+[[symbols]]
+name = "OPS.FILE.EDIT"
+classification = "delegable"
+description = "Modify a tracked file or text document in-place."
+
+[[symbols]]
+name = "OPS.FILE.DELETE.RECOVERABLE"
+classification = "delegable"
+description = "Delete a recoverable file or temporary artifact in a bounded scope."
+
+[[symbols]]
+name = "OPS.TERM.RUN.LOCAL"
+classification = "delegable"
+description = "Run a local terminal command in a constrained user session."
+
+[[symbols]]
+name = "OPS.INPUT.HID"
+classification = "delegable"
+description = "Inject a low-level keyboard or pointer event into a desktop session."
+
+[[symbols]]
+name = "CRIT.IRREVERSIBLE"
+classification = "critical"
+description = "Delete, wipe, or overwrite data in a way that cannot be easily reversed."
+
+[[symbols]]
+name = "CRIT.SYS.SECURITY"
+classification = "critical"
+description = "Affect system security, permissions, users, or service control settings."
+
+[[symbols]]
+name = "CRIT.SECRET"
+classification = "critical"
+description = "Handle credentials, secrets, tokens, or private keys."
+
+[[symbols]]
+name = "CRIT.EGRESS"
+classification = "critical"
+description = "Move sensitive data outside the local boundary or to an external sink."
+
+[[symbols]]
+name = "CRIT.FINANCIAL"
+classification = "critical"
+description = "Move money, make payment decisions, or trigger financial-side effects."
+
+[[symbols]]
+name = "CRIT.THIRD.PARTY"
+classification = "critical"
+description = "Trigger external social, messaging, or third-party publication behavior."
+
+[[symbols]]
+name = "CRIT.UNCLASSIFIED"
+classification = "critical"
+description = "No recognized symbol matched; this command is treated as critical by default."
+
+[[policy]]
+symbol = "OPS.APP.OPEN"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.APP.BROWSE"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.FILE.CREATE"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.FILE.EDIT"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.FILE.DELETE.RECOVERABLE"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.TERM.RUN.LOCAL"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "OPS.INPUT.HID"
+classification = "delegable"
+auto_approve_seconds = 120
+
+[[policy]]
+symbol = "CRIT.IRREVERSIBLE"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.SYS.SECURITY"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.SECRET"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.EGRESS"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.FINANCIAL"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.THIRD.PARTY"
+classification = "critical"
+auto_approve_seconds = 0
+
+[[policy]]
+symbol = "CRIT.UNCLASSIFIED"
+classification = "critical"
+auto_approve_seconds = 0

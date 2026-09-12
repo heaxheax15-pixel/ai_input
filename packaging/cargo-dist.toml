@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------------------
+# cargo-dist configuration for AI-Bridge.
+#
+# cargo-dist builds and packages the whole workspace (daemon, gatekeeper-core,
+# UI) into platform installers automatically from CI:
+#   - Windows: .msi (via WiX)
+#   - macOS:   .dmg / .zip
+#   - Linux:   .tar.gz, and (with the appimage feature) .AppImage
+#
+# To scaffold real CI wiring run:  cargo dist init --yes
+#
+# NOTE ON CODE SIGNING (out of scope for the first build, REQUIRED before any
+# public/wide distribution):
+#   - Windows Authenticode signing  (cargo-dist: .windows_signing_ceremonies)
+#   - macOS Developer ID + notarization (cargo-dist: .macos_... ceremonies)
+# Unsigned installers trigger OS security warnings (SmartScreen / Gatekeeper).
+# ---------------------------------------------------------------------------
+
+[workspace]
+# The crate that produces the desktop UI binary (the primary app).
+# Add the other binaries (daemon, mock_gatekeeper) as extra targets.
+members = ["crates/ai-bridge-ui"]
+
+[dependencies.ai-bridge-ui]
+# Everything is built within the same workspace; targets are auto-detected.
+
+# ---------------------------------------------------------------------------
+# The UI binary is the main deliverable; the daemon / core are libraries that
+# get bundled alongside it in the same install.
+# ---------------------------------------------------------------------------
+
+[package."ai-bridge-ui"]
+# The display name shown to users.
+description = "AI-Bridge Operator Dashboard — policy/config management UI"
+
+[[package."ai-bridge-ui".targets]]
+kind = "executable"
+name = "ai-bridge-ui"
+
+# ---------------------------------------------------------------------------
+# Dist settings
+# ---------------------------------------------------------------------------
+
+[workspace.metadata.dist]
+# The root package whose binaries we ship is the UI crate.
+dist-locations = ["**"]
+
+# Build & tag strategy
+# Each `cargo dist plan` run produces artifacts per git tag.
+
+release = true
+installers = ["msi", "dmg", "shell", "powershell"]
+
+# Install the daemon, core, and UI together into a dedicated (non-raw-bin)
+# application directory so we never pollute /usr/bin directly.
+publish-jobs = []
+
+# Linux AppImage (comment out if cross-img is unavailable)
+apps = ["ai-bridge-ui"]
+
+# Code-signing placeholders — fill these in before wide distribution.
+# .windows_signing_ceremonies.authenticode = ...
+# .macos_entitlements = ...
